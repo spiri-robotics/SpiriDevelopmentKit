@@ -1,0 +1,6 @@
+# Build from source instead of pulling:
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build
+services:
+  robot:
+    image: sdk-sim-robot:dev
+    build: robot

@@ -31,6 +31,8 @@ jobs:
             context: apps/gazebo/gz
           - name: gazebo-web
             context: apps/gazebo/web
+          - name: sim-robot
+            context: apps/sim-robot/robot
     steps:
       - uses: actions/checkout@v4
 

@@ -1,0 +1,45 @@
+# sim-robot: one simulated Spiri robot. A privileged docker-in-docker
+# container running its own dockerd and SpiriConfig; robot apps install and
+# run inside it as ordinary compose stacks, the same as on a real Mu. Its
+# SpiriConfig shows up in the SDK SpiriConfig at /plugin/<name>/.
+#
+# The robot's name is its hostname, which is also its SpiriSynq topic prefix.
+# One robot per install: set ROBOT_NAME (and the project name) per copy, e.g.
+#   ROBOT_NAME=mu-2 docker compose -p mu-2 up -d
+# Install zenoh-router first; robots join the `spirisynq` network it creates.
+#
+# Inside, a robot is networked like a real Mu: it runs the Mu's own
+# zenoh-router app, whose host-mode router sits on `spirisynq` here and is
+# found by the appliance's router. Inner apps only ever talk to their own
+# router, so they need no appliance addresses or names.
+services:
+  robot:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-robot:edge
+    hostname: ${ROBOT_NAME:-mu-1}
+    container_name: ${ROBOT_NAME:-mu-1}
+    privileged: true
+    restart: unless-stopped
+    environment:
+      # Optional: the appliance's pull-through registry, e.g. http://registry:5000
+      REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
+    volumes:
+      - docker:/var/lib/docker
+      - compose:/srv/compose
+      - spiriconfig:/var/lib/spiriconfig
+    networks:
+      - spirisynq
+    labels:
+      spiriconfig.plugin.name: ${ROBOT_NAME:-mu-1}
+      spiriconfig.plugin.port: "8337"
+      spiriconfig.plugin.title: ${ROBOT_NAME:-mu-1}
+      spiriconfig.plugin.icon: flight
+
+volumes:
+  docker:
+  compose:
+  spiriconfig:
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

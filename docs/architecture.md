@@ -100,6 +100,24 @@ Everything else is the same app on both: mavlink-router, zenoh, and the
 operator's own code, such as the helipad detector. Moving from sim to hardware
 (#97) means swapping the first column for the third and changing nothing else.
 
+The image is `apps/sim-robot/`: stock `docker:dind` plus SpiriConfig, with an
+entrypoint that runs both. The inner dockerd listens on its unix socket only,
+not the dind default `tcp/2375`, which would hand the robot to anything on the
+bridge. SpiriConfig runs with `SPIRICONFIG_AUTH=none` and TLS off, and with a
+session cookie named after the hostname. `REGISTRY_MIRROR` points the inner
+dockerd at the shared registry. Docker only applies mirrors to Docker Hub,
+though, so ghcr.io pulls still need a solution (#177).
+
+Inside, a robot is networked exactly like a Mu. It runs the Mu's own
+`zenoh-router` app: an inner router on the robot's own `spirisynq` network,
+plus a `network_mode: host` router in the robot's network namespace, which is
+on the appliance bridge. Inner apps only ever talk to their own router, so
+they need no appliance names or addresses. Docker's DNS doesn't resolve
+appliance names from inner containers anyway. Routers don't connect to each
+other by default, so the appliance's `zenoh-router` sets
+`scouting/multicast/autoconnect` to include routers and joins each robot's
+router as it appears. Robots carry no sim-specific zenoh config.
+
 A sim robot installs from two appsources. The real **Appsource-Spiri-Mu**
 provides everything except its ArduPilot and camera connectors, which the robot
 doesn't start. **Appsource-Spiri-Simulation** provides the sim apps above. See
@@ -282,7 +300,9 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
 - [ ] A leftover ArduPilot model with no SITL attached doesn't stall lockstep.
 - [ ] Two robots, then five, in lockstep: real-time factor, and GPS correct with
       a shared `--home`.
-- [ ] Zenoh multicast scouting between robots on the docker bridge.
+- [x] Zenoh multicast scouting between robots on the docker bridge. Peers
+      and the appliance's router (with router autoconnect) find a robot's
+      host-mode router.
 - [ ] A robot's SpiriConfig works nested inside the SDK SpiriConfig under
       `/plugin/mu-1/`: URLs, cookies, auth.
 - [ ] Whether `--home` and the FDM index stay config, or can be read from the
