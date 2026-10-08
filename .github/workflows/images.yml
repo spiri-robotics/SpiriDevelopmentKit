@@ -1,0 +1,66 @@
+name: Build and Publish Images
+
+# One job per image this repo builds. Images are
+# ghcr.io/spiri-robotics/spiridevelopmentkit/<name>; GHCR needs no secrets
+# (uses GITHUB_TOKEN).
+#
+# Release tags (vX.Y.Z) publish X.Y.Z, X.Y and latest; main publishes edge.
+# Appsource-Spiri-Simulation pins versions and picks up new ones by itself via
+# Dependabot, so nothing here needs access to that repo.
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: spiri-robotics/spiridevelopmentkit
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gazebo
+            context: apps/gazebo/gz
+          - name: gazebo-web
+            context: apps/gazebo/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=edge,branch=main
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

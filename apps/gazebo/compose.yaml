@@ -1,0 +1,43 @@
+# gazebo: a Gazebo Jetty world plus a browser viewer for SpiriConfig.
+# Gazebo talks gz-transport over zenoh, through the zenoh-router app on the
+# `spirisynq` network, so robots (and a developer's native `gz sim -g`) reach
+# it by partition, not by address. Install zenoh-router first.
+#
+# Optional: robots fly without it, they just have no world to spawn into.
+services:
+  gazebo:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.0
+    restart: unless-stopped
+    networks:
+      - spirisynq
+
+  # Same image, serving model files over HTTP. Gazebo's websocket sends
+  # meshes at ~245 KB/s, too slow for the viewer; see gz/asset_server.py.
+  gazebo-assets:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.0
+    restart: unless-stopped
+    command: ["python3", "/usr/local/bin/gz-asset-server"]
+    networks:
+      - spirisynq
+
+  gazebo-web:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo-web:0.1.0
+    restart: unless-stopped
+    environment:
+      GZ_WEBSOCKET: gazebo:9002
+      GZ_ASSETS: gazebo-assets:9003
+    depends_on:
+      - gazebo
+      - gazebo-assets
+    networks:
+      - spirisynq
+    labels:
+      spiriconfig.plugin.name: gazebo
+      spiriconfig.plugin.port: "8080"
+      spiriconfig.plugin.title: Gazebo
+      spiriconfig.plugin.icon: view_in_ar
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

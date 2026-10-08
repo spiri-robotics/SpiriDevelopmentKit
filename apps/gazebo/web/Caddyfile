@@ -1,0 +1,12 @@
+:8080 {
+	handle /ws {
+		reverse_proxy {$GZ_WEBSOCKET:gz:9002}
+	}
+	handle_path /models/* {
+		reverse_proxy {$GZ_ASSETS:gz-assets:9003}
+	}
+	handle {
+		root * /srv
+		file_server
+	}
+}

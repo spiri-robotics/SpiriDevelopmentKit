@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gazebo</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #1e1e1e; font: 14px system-ui, sans-serif; }
+      #gz-scene { position: absolute; inset: 0; }
+      #panel {
+        position: absolute; top: 12px; left: 12px; min-width: 180px; max-height: calc(100% - 24px); overflow: auto;
+        padding: 8px 10px; border-radius: 6px; background: rgb(0 0 0 / 0.6); color: #eee;
+      }
+      #status { font-size: 12px; opacity: 0.8; margin-bottom: 6px; }
+      #status.up::before { content: "● "; color: #4caf50; }
+      #status.down::before { content: "● "; color: #e57373; }
+      #models { list-style: none; margin: 0; padding: 0; }
+      #models li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+      button { font: inherit; font-size: 12px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div id="gz-scene"></div>
+    <div id="panel">
+      <div id="status" class="down">connecting…</div>
+      <ul id="models"></ul>
+      <button id="reset">Reset view</button>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

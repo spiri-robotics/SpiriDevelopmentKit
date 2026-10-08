@@ -1,0 +1,5 @@
+// Gazebo's zenoh session: a peer that meets everyone else at the SDK router.
+{
+  mode: "peer",
+  connect: { endpoints: ["tcp/zenoh-router:7447"] },
+}

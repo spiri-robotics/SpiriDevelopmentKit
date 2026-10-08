@@ -1,0 +1,64 @@
+<?xml version="1.0" ?>
+<!--
+  The default SDK world: flat ground, nothing else. Robots are not in here --
+  each one's sim-agent spawns itself through /world/sdk/create.
+-->
+<sdf version="1.9">
+  <world name="sdk">
+    <!-- 1 kHz: ArduPilot SITL lock-steps against this. -->
+    <physics name="1ms" type="ignore">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <!-- Provides /world/sdk/create and /world/sdk/remove. -->
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
+    <!-- Feeds gzweb; reached only through the plugin's reverse proxy. -->
+    <plugin filename="gz-sim-websocket-server-system" name="gz::sim::systems::WebsocketServer">
+      <port>9002</port>
+      <publication_hz>30</publication_hz>
+      <max_connections>-1</max_connections>
+    </plugin>
+
+    <!-- Every robot's SITL uses this as --home; see docs/architecture.md. -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>44.6488</latitude_deg>
+      <longitude_deg>-63.5752</longitude_deg>
+      <elevation>0</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>2000 2000</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>2000 2000</size></plane></geometry>
+          <material>
+            <ambient>0.5 0.6 0.4 1</ambient>
+            <diffuse>0.5 0.6 0.4 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
