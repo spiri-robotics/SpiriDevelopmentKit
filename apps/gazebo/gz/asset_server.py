@@ -11,6 +11,7 @@ Like the websocket server, nothing outside the resource paths is readable.
 """
 import os
 import shutil
+import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
@@ -46,10 +47,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(os.path.getsize(found)))
-        self.send_header("Cache-Control", "max-age=3600")
+        # Revalidate every time: a proxy that re-compresses the body drops
+        # Content-Length, so a download cut short would be cached as complete.
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         with open(found, "rb") as f:
             shutil.copyfileobj(f, self.wfile)
+
+    def finish(self):
+        # Close gracefully. A request can carry a body we never read (SpiriConfig's
+        # proxy streams one even on GET), and closing a socket with unread input
+        # sends a TCP reset, which can destroy the response still in flight.
+        super().finish()
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+            self.connection.settimeout(5)
+            while self.connection.recv(65536):
+                pass
+        except OSError:
+            pass
 
     def log_message(self, fmt, *args):
         pass

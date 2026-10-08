@@ -5,6 +5,17 @@
 	handle_path /models/* {
 		reverse_proxy {$GZ_ASSETS:gz-assets:9003}
 	}
+	# gzweb strips model:// and first requests a mesh relative to the page
+	# (iris_with_standoffs/meshes/iris.dae), so anything that isn't one of
+	# the viewer's own files is a model path.
+	@model not file {
+		root /srv
+		try_files {path} {path}/index.html
+	}
+	handle @model {
+		rewrite * /model{path}
+		reverse_proxy {$GZ_ASSETS:gz-assets:9003}
+	}
 	handle {
 		root * /srv
 		file_server

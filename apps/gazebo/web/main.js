@@ -12,6 +12,7 @@ const scene = new SceneManager({ elementId: "gz-scene", websocketUrl: wsUrl.href
 // gzweb has no hook for this; `transport` is private in its TypeScript only.
 const transport = scene.transport;
 const wsGetAsset = transport.getAsset.bind(transport);
+// gzweb strips model:// before asking, so a bare relative path is a model path.
 transport.getAsset = (uri, cb) => {
   const path = uri.startsWith("model://")
     ? "model/" + uri.slice("model://".length)
@@ -19,12 +20,18 @@ transport.getAsset = (uri, cb) => {
       ? "file" + uri.slice("file://".length)
       : uri.startsWith("/")
         ? "file" + uri
-        : null;
+        : /^[a-z][a-z0-9+.-]*:/i.test(uri)
+          ? null
+          : "model/" + uri;
   if (!path) return wsGetAsset(uri, cb);
+  // Fall back only if the fetch fails. A mesh that fails to parse would fail
+  // the same way over the websocket, and a big one can drop the connection.
   fetch(new URL("models/" + path, window.location.href))
     .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
-    .then((buf) => cb(new Uint8Array(buf)))
-    .catch(() => wsGetAsset(uri, cb));
+    .then(
+      (buf) => cb(new Uint8Array(buf)),
+      () => wsGetAsset(uri, cb),
+    );
 };
 
 const status =document.getElementById("status");
