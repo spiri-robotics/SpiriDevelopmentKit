@@ -44,11 +44,21 @@ class Handler(BaseHTTPRequestHandler):
         if not found:
             self.send_error(404)
             return
+        st = os.stat(found)
+        etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+        # Browsers keep the file but check it each load, so a model that changes
+        # on disk shows up at once and an unchanged one costs only a 304.
+        if etag in self.headers.get("If-None-Match", ""):
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Length", str(os.path.getsize(found)))
-        # Revalidate every time: a proxy that re-compresses the body drops
-        # Content-Length, so a download cut short would be cached as complete.
+        self.send_header("Content-Length", str(st.st_size))
+        self.send_header("ETag", etag)
+        self.send_header("Last-Modified", self.date_time_string(int(st.st_mtime)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         with open(found, "rb") as f:
