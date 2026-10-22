@@ -1,4 +1,4 @@
-"""Serve Gazebo model files over HTTP for the gzweb viewer.
+"""Serve Gazebo model and world files over HTTP for the map viewer.
 
 Gazebo's websocket server sends assets at ~245 KB/s (one lws chunk per
 16 ms service tick), so a 20 MB mesh takes over a minute. This resolves

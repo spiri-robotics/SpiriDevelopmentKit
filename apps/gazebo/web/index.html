@@ -4,28 +4,38 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Gazebo</title>
-    <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #1e1e1e; font: 14px system-ui, sans-serif; }
-      #gz-scene { position: absolute; inset: 0; }
-      #panel {
-        position: absolute; top: 12px; left: 12px; min-width: 180px; max-height: calc(100% - 24px); overflow: auto;
-        padding: 8px 10px; border-radius: 6px; background: rgb(0 0 0 / 0.6); color: #eee;
-      }
-      #status { font-size: 12px; opacity: 0.8; margin-bottom: 6px; }
-      #status.up::before { content: "● "; color: #4caf50; }
-      #status.down::before { content: "● "; color: #e57373; }
-      #models { list-style: none; margin: 0; padding: 0; }
-      #models li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
-      button { font: inherit; font-size: 12px; cursor: pointer; }
-    </style>
+    <script>
+      // Cesium loads its workers and assets from here. Relative, so it works
+      // behind SpiriConfig's /plugin/<name>/ prefix.
+      window.CESIUM_BASE_URL = new URL("cesium/", window.location.href).href;
+    </script>
   </head>
   <body>
-    <div id="gz-scene"></div>
-    <div id="panel">
-      <div id="status" class="down">connecting…</div>
-      <ul id="models"></ul>
-      <button id="reset">Reset view</button>
-    </div>
+    <!-- The applet list; shell.js fills #applets. -->
+    <aside id="sidebar">
+      <div id="brand">
+        <span id="brand-name">Map</span>
+        <button id="sidebar-toggle" type="button" title="Hide sidebar (/ or Ctrl+K brings it back)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 6l-6 6 6 6" /></svg>
+        </button>
+      </div>
+      <div id="filters">
+        <input id="search" type="search" placeholder="Search applets…" aria-label="Search applets"
+               aria-controls="applets" autocomplete="off" spellcheck="false" title="Search applets (/ or Ctrl+K)" />
+      </div>
+      <nav id="applets" aria-label="Applets"></nav>
+      <div id="sidebar-foot">
+        <span id="status" class="down">connecting…</span>
+      </div>
+    </aside>
+    <main id="stage">
+      <div id="map"></div>
+      <!-- Gazebo's 3D world, drawn over the globe; see gz-overlay.js. -->
+      <canvas id="gz"></canvas>
+      <button id="sidebar-expand" type="button" title="Show sidebar (/ or Ctrl+K)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+      </button>
+    </main>
     <script type="module" src="./main.js"></script>
   </body>
 </html>

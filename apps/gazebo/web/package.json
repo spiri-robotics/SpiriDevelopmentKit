@@ -3,11 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build && mkdir -p dist/cesium && cp -r node_modules/cesium/Build/Cesium/Assets node_modules/cesium/Build/Cesium/ThirdParty node_modules/cesium/Build/Cesium/Workers node_modules/cesium/Build/Cesium/Widgets dist/cesium/"
   },
   "dependencies": {
     "@babel/runtime": "7.26.0",
-    "gzweb": "3.0.2"
+    "cesium": "1.146.0",
+    "gzweb": "3.0.2",
+    "three": "0.141.0"
   },
   "devDependencies": {
     "vite": "7.1.5"

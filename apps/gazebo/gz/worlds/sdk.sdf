@@ -20,7 +20,7 @@
     </plugin>
     <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
     <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
-    <!-- Feeds gzweb; reached only through the plugin's reverse proxy. -->
+    <!-- Feeds the map viewer; reached only through the plugin's reverse proxy. -->
     <plugin filename="gz-sim-websocket-server-system" name="gz::sim::systems::WebsocketServer">
       <port>9002</port>
       <publication_hz>30</publication_hz>

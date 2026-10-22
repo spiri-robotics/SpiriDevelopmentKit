@@ -1,4 +1,4 @@
-# gazebo: a Gazebo Jetty world plus a browser viewer for SpiriConfig.
+# gazebo: a Gazebo Jetty world plus a Cesium map viewer for SpiriConfig.
 # Gazebo talks gz-transport over zenoh, through the zenoh-router app on the
 # `spirisynq` network, so robots (and a developer's native `gz sim -g`) reach
 # it by partition, not by address. Install zenoh-router first.
@@ -11,8 +11,8 @@ services:
     networks:
       - spirisynq
 
-  # Same image, serving model files over HTTP. Gazebo's websocket sends
-  # meshes at ~245 KB/s, too slow for the viewer; see gz/asset_server.py.
+  # Same image, serving model and world files over HTTP; the map reads the
+  # world's georeference from here. See gz/asset_server.py.
   gazebo-assets:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
     restart: unless-stopped

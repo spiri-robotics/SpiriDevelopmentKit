@@ -43,6 +43,7 @@ appliance (docker)
 │                     Manages the sim stacks; each robot's UI appears in it.
 ├── zenoh-router      The one router everything meets at, sim and real.
 ├── world             Stock Gazebo Jetty (zenoh backend) + ardupilot_gazebo.
+├── map               CesiumJS operator view and offline map tiles (proposed).
 ├── registry          Image mirror shared by every robot's inner dockerd.
 └── mu-1 … mu-N       One docker-in-docker container per simulated robot,
                       each running its own SpiriConfig and robot apps.
@@ -207,6 +208,120 @@ camera stream. This needs a UDP path from the world to the robot, which the
 appliance's bridge provides. Robots reachable only through zenoh will need
 video over zenoh instead. That isn't required for the contract.
 
+## The map: Cesium first
+
+**Decision:** the operator's view of the swarm is a CesiumJS globe. It draws
+robots from what they publish on SpiriSynq, not from Gazebo, and it is the same
+view for sim and real robots. Gazebo's world geometry is a layer on that globe.
+The gzweb viewer it replaced is gone.
+
+**Today (interim).** The map is `apps/gazebo/web/`. Robots don't publish
+telemetry over zenoh yet, so it draws models from Gazebo's websocket instead
+(scene, deletions, poses) and anchors them with the world's
+`<spherical_coordinates>`, read from the world SDF via `gazebo-assets`. The 3D
+world is gzweb's own three.js scene (meshes, materials, link poses), rendered
+in a transparent canvas over the globe with its camera copied from Cesium's
+each frame (`gz-overlay.js`). Being an overlay, models always draw over the
+globe, so terrain can't hide them; rendering them as Cesium glTF models would
+fix that. Ground planes are outlined on the map instead of drawn.
+The base imagery is Natural Earth II, and Esri World Imagery and OpenStreetMap
+stream from the internet as layers that can be switched on and off, with the
+Gazebo layer. None of this works airgapped. It's a stand-in until robot
+telemetry and the local tilesets below exist.
+
+**Applets.** The globe is the only thing always on screen, apart from the
+connection status. Every tool is an applet: one file in `web/applets/`, found
+at build time, listed by title under its group in a sidebar, opened into a
+floating window and unmounted when closed (`shell.js`). There may be hundreds,
+so the sidebar is labels rather than icons, and its search box (`/` or Ctrl+K)
+matches titles, groups and keywords. Tools about one entity should register *actions* instead,
+which show up in its right-click menu and the Inspector. A one-off debug tool
+then takes no space until someone points at the thing it's for. Map layers are
+a registry applets can add to, separate from the windows. Later, other
+containers could supply applets by URL through a SpiriConfig-style label; they
+would run with full trust in the page.
+
+Why the robots and not Gazebo:
+
+- **Sim and real look the same.** A sim robot's position comes from SITL
+  through the same mavlink-router and zenoh path as a real Mu's. The view can't
+  tell them apart, and doesn't need to. Nothing about it changes for #97.
+- **Mixed swarms.** Sim and real robots on one network appear on one map. A
+  viewer per backend would need two screens.
+- **It shows what the operator would see.** Gazebo shows ground truth. The map
+  shows each robot's own estimate, so a bad `--home` or a GPS fault is visible
+  on the map instead of hidden by the simulator.
+
+### Layers
+
+| Layer | Source | Sim | Real |
+| --- | --- | --- | --- |
+| Terrain and imagery | local tilesets on the appliance (below) | yes | yes |
+| Robots | SpiriSynq state per robot **(proposed)** | yes | yes |
+| World geometry | Gazebo world, exported to glTF / 3D Tiles | yes | no |
+| Sim-only entities | targets and intruders, from Gazebo poses | yes | no |
+
+**Placement.** The Gazebo world's `<spherical_coordinates>` is its anchor on
+the globe (`sdk.sdf` is at 44.6488, -63.5752, ENU). Every robot's `--home`
+must equal it. That is already a requirement for GPS. The world layer is placed
+at that origin with an ENU-to-ECEF transform, so world geometry and robot
+positions line up only if both are right.
+
+**World geometry.** The world's static models are exported once, per world, to
+glTF and served next to it. **(proposed)** This is done at image build time
+from the same SDF and meshes the world container already ships, and served by
+`gazebo-assets`. Terrain is the reverse case. A world meant to look like a real
+place takes its heightmap *from* the same DEM the map uses, so Gazebo and
+Cesium agree on where the ground is.
+
+**Sim-only entities.** Targets and intruder drones aren't robots and publish
+nothing. A small bridge subscribes to Gazebo's pose topic over zenoh and
+republishes the entities it is told about, tagged as simulated. **(proposed)**
+It is a plain zenoh client like `sim-agent`, and lives with the world.
+
+**Robot state.** This needs one agreed SpiriSynq object per robot: position,
+attitude, mode and battery, at a few Hz. Whether the Mu already publishes one,
+or MAVLink to QGC is the only source today, is an open question. The object is
+the actual shared piece. The map is one consumer of it.
+
+### Map data
+
+The appliance is airgapped (#92), so the map can't stream anything. That rules
+out most of what Cesium is known for.
+
+**Not usable:**
+
+- **Cesium ion** (Cesium World Terrain, OSM Buildings, Bing imagery) is a cloud
+  service. Its free Community tier is for non-commercial use. Cesium's own
+  assets can't be downloaded for offline use, and Bing and Google Photorealistic
+  3D Tiles forbid offline caching. Offline ion is the paid *Cesium ion
+  Self-Hosted*. We'd only need that if the open tooling below fails.
+
+**Usable, and free:**
+
+| Data | Resolution | Licence | Notes |
+| --- | --- | --- | --- |
+| CesiumJS itself | n/a | Apache 2.0 | Self-hosted, no ion token needed. |
+| Natural Earth II imagery | ~1 km | public domain | Ships inside CesiumJS. The offline fallback: a usable globe with zero setup. |
+| Copernicus DEM GLO-30 | 30 m, global | free, commercial use allowed | Needs a source notice and a liability disclaimer. GLO-10 is not public. |
+| NRCan HRDEM | 1–2 m, lidar, most of southern Canada | Open Government Licence – Canada | The right terrain for Canadian test sites. CDEM is its legacy predecessor. |
+| Sentinel-2 cloudless (EOX) | 10 m | depends on year | 2016 is CC BY 4.0. Some later years were non-commercial. Check the year before shipping. |
+| OpenStreetMap | vector | ODbL | Buildings and roads, extruded to 3D Tiles if we want them. Share-alike applies to derived databases. |
+
+The globe's base layer is Natural Earth II. Each scenario site adds a
+high-resolution patch over it: Copernicus or HRDEM terrain, Sentinel-2 imagery,
+and optional OSM buildings, clipped to a few km around the site.
+
+**Tooling (proposed).** Terrain becomes quantized-mesh tiles with Cesium
+Terrain Builder (`tumgis/ctb-quantized-mesh`). Imagery becomes a TMS/XYZ
+pyramid with `gdal2tiles`. Both are static files served by Caddy. CTB is
+unmaintained and known to emit flat terrain from some GeoTIFFs (nodata and
+vertical units), so check its output on a small area first. The site bundles are
+built once, online, and shipped in the offline bundle (`offline/`).
+
+**Attribution.** Copernicus, EOX and OSM all require credits on the map. Each
+tileset ships with its credit string, which the viewer shows.
+
 ## Networking
 
 **Decision:** one plain docker bridge network for everything on the appliance.
@@ -273,7 +388,8 @@ image they pin is loaded into its registry.
 apps/<app>/           one directory per appsource app:
                       compose.yaml (pulls), compose.dev.yaml (builds),
                       and the source of each image it builds
-apps/gazebo/          gz/ (world image), web/ (viewer image)
+apps/gazebo/          gz/ (world image), web/ (Cesium map image)
+apps/map/             (planned) CesiumJS operator view and tile server
 compose.yaml          (planned) the whole appliance, for development
 models/               robot SDF templates and meshes (shipped in robot images)
 worlds/               world SDFs per KPI scenario
@@ -294,8 +410,9 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
 - [x] The OSRF Jetty packages were built with zenoh (`ldd libgz-transport15.so | grep zenoh`).
 - [x] ardupilot_gazebo builds against Jetty, with `GZ_VERSION=jetty`.
 - [x] Spawn and remove from Python over raw zenoh with gz-msgs protobufs.
-- [x] gzweb renders the world through Caddy. Gazebo's websocket sends meshes
-      at ~245 KB/s, so the viewer fetches them over HTTP instead
+- [x] gzweb renders the world through Caddy (since replaced by the Cesium map).
+      Gazebo's websocket sends meshes at ~245 KB/s, so the viewer fetches them
+      over HTTP instead
       (`apps/gazebo/gz/asset_server.py`).
 - [ ] A leftover ArduPilot model with no SITL attached doesn't stall lockstep.
 - [ ] Two robots, then five, in lockstep: real-time factor, and GPS correct with
@@ -307,3 +424,9 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
       `/plugin/mu-1/`: URLs, cookies, auth.
 - [ ] Whether `--home` and the FDM index stay config, or can be read from the
       world.
+- [ ] What position/state the Mu publishes on SpiriSynq today, and whether it
+      is enough for the map.
+- [ ] CTB produces correct quantized-mesh terrain from Copernicus GLO-30 for
+      one site, served offline to CesiumJS.
+- [ ] A world's static models export to glTF and line up on the globe at its
+      `<spherical_coordinates>`.
