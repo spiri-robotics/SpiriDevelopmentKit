@@ -24,6 +24,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import { Topic, Transport } from "gzweb";
 import { GazeboOverlay } from "./gz-overlay.js";
 import { Actions, Layers, startShell } from "./shell.js";
+import { Zenoh } from "./zenoh.js";
 
 // A Cesium globe. Natural Earth II ships inside CesiumJS and is the offline
 // fallback; the detailed layers stream from public tile servers until the
@@ -124,8 +125,13 @@ layers.add("gazebo", "Gazebo", {
   },
 });
 
+// Zenoh, through Caddy's /zenoh; connects when an applet first uses it.
+const zenohUrl = new URL("zenoh", window.location.href);
+zenohUrl.protocol = zenohUrl.protocol === "https:" ? "wss:" : "ws:";
+const zenoh = new Zenoh(zenohUrl.href);
+
 // Everything else on screen is an applet; see shell.js and applets/.
-startShell(viewer, { viewer, layers, actions: new Actions(), gazebo, home: () => origin && resetView() });
+startShell(viewer, { viewer, layers, actions: new Actions(), gazebo, zenoh, home: () => origin && resetView() });
 
 // Gazebo poses are metres in the world's ENU frame, anchored to the globe by the
 // world's <spherical_coordinates>. Gazebo doesn't send those over the websocket,

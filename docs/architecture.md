@@ -241,6 +241,40 @@ a registry applets can add to, separate from the windows. Later, other
 containers could supply applets by URL through a SpiriConfig-style label; they
 would run with full trust in the page.
 
+**Zenoh in the page.** Applets reach zenoh directly through `ctx.zenoh`
+(`web/zenoh.js`). It wraps zenoh-ts, which talks over a websocket (Caddy's
+`/zenoh`) to `zenoh-ws`, a zenoh-ts remote-api bridge that runs from the
+`gazebo-web` image and connects to the router as a client. The bridge, the
+zenoh-ts package and the router are all on 1.8.0, and the bridge and the
+package must match. The session opens when an applet first needs it,
+reconnects by itself, and declares its subscriptions again afterwards. The
+bridge doesn't restrict anything. Anyone who can load the page can read and
+write every key, so the page is only as private as SpiriConfig's login.
+
+**Don't subscribe to `**` from the page.** Everything a subscription matches
+crosses the websocket, and one camera stream is enough to starve it. At 24 MB/s
+of camera frames, a page subscribed to `**` received a few frames a second and
+its telemetry froze. Publishers weren't slowed. Whole-network views ask
+`zenoh-index` (`index/index.py`) instead. It subscribes to `**` next to the
+router and keeps each key's latest sample, count, rate and a short text preview.
+Pages poll `@sdk/index?since=<rev>` for what changed, and fetch one key's value
+from `@sdk/index/value`. With the same 24 MB/s that is about 1 KB/s per page,
+plus the value of whatever key is selected. `@` keys are only matched exactly,
+so this traffic never appears in `**`. The *Zenoh keys* applet is built on it:
+a filterable tree of every key (`web/path-tree.js`, reusable for any `/`-path
+list), with deleted keys struck through for a minute.
+
+The index also runs SpiriSynq discovery (`**/sr_metadata`) every 5 s and lists
+the objects it finds in the summary, since an object's schema and methods are
+queryables that `**` never sees. *Zenoh keys* draws those objects in their own
+colour. Selecting one asks the object for its `sr_object_schema` and shows its
+fields and methods (`web/synq-schema.js`), and the methods can be called from
+there (`web/synq.js`, the SpiriSynq RPC protocol), generators included. The index
+also fetches each object's schema (again when its classes or owning node
+change) and checks every value put under the object against it
+(`index/check.py`). Values that don't fit, and keys that aren't fields of the
+object, are shown in red with the reason. Values over 1 MB aren't checked.
+
 Why the robots and not Gazebo:
 
 - **Sim and real look the same.** A sim robot's position comes from SITL

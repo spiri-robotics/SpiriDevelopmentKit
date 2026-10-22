@@ -1,0 +1,11 @@
+/* Rows of path-tree.js. */
+.path-tree { font: 12px/1.5 ui-monospace, monospace; }
+.path-tree .kids { padding-left: 14px; }
+.path-tree .line { display: flex; gap: 8px; padding: 0 4px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.path-tree .line:hover { background: var(--hover); }
+.path-tree .line.selected { background: var(--current); }
+.path-tree .twisty { flex: 0 0 10px; color: var(--muted); }
+.path-tree .name { flex: 0 0 auto; }
+.path-tree .value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.path-tree .rate { flex: 0 0 auto; color: var(--accent); }
+.path-tree .line.deleted .name, .path-tree .line.deleted .value { text-decoration: line-through; opacity: .6; }

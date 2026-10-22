@@ -1,0 +1,30 @@
+/* SpiriSynq object schemas, as drawn by synq-schema.js. */
+.synq-schema { font-size: 12px; }
+.synq-schema .classes { color: var(--synq); font-weight: 600; }
+.synq-schema .help { color: var(--muted); }
+.synq-schema .warn { color: var(--down); }
+.synq-schema .section { margin-top: 6px; }
+.synq-schema summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.synq-schema .fields { padding: 2px 0 0 12px; }
+.synq-schema .field { padding: 2px 0; }
+.synq-schema .field.builtin { opacity: .55; }
+.synq-schema .head { display: flex; flex-wrap: wrap; gap: 6px; font-family: ui-monospace, monospace; }
+.synq-schema .name { color: var(--text); }
+.synq-schema .type { color: var(--accent); }
+.synq-schema .default, .synq-schema .enc { color: var(--muted); }
+.synq-schema .field .help { padding-left: 12px; }
+.synq-schema .defs { padding-left: 12px; }
+.synq-schema .def-name { margin-top: 4px; font-family: ui-monospace, monospace; color: var(--synq); }
+.synq-schema .raw { max-height: 30vh; overflow: auto; margin: 4px 0 0; white-space: pre-wrap; }
+.synq-schema .head .open { margin-left: auto; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: var(--muted); font-size: 11px; }
+.synq-schema .head .open:hover { color: var(--text); background: var(--hover); }
+.synq-schema .call { margin: 4px 0 4px 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; display: flex; flex-direction: column; gap: 4px; }
+.synq-schema .param { display: flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; }
+.synq-schema .param input:not([type="checkbox"]), .synq-schema .param select {
+  flex: 1; min-width: 0; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px;
+  background: #101317; color: var(--text); font: 12px ui-monospace, monospace;
+}
+.synq-schema .call .go { align-self: flex-start; padding: 2px 10px; border: 1px solid var(--current-line); border-radius: 4px; background: var(--current); color: var(--text); }
+.synq-schema .call .go:disabled { opacity: .5; }
+.synq-schema .result { margin: 0; max-height: 20vh; overflow: auto; white-space: pre-wrap; color: var(--text); }
+.synq-schema .result.error { color: var(--down); }

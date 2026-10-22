@@ -9,3 +9,8 @@ services:
   gazebo-web:
     image: sdk-gazebo-web:dev
     build: web
+  zenoh-ws:
+    image: sdk-gazebo-web:dev
+  zenoh-index:
+    image: sdk-zenoh-index:dev
+    build: index

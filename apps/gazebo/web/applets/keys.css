@@ -1,0 +1,28 @@
+/* Zenoh keys: a wider window, a filter bar, the tree, and the selected value. */
+.win:has(.zkeys) { width: 520px; max-width: calc(100% - 24px); }
+.zkeys { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.zkeys .bar { display: flex; gap: 4px; }
+.zkeys .filter {
+  flex: 1; min-width: 0; padding: 4px 7px; border-radius: 6px;
+  border: 1px solid var(--line); background: #101317; color: var(--text); font: 12px ui-monospace, monospace;
+}
+.zkeys .filter:focus { outline: 1px solid var(--accent); }
+.zkeys .filter.bad { border-color: var(--down); outline-color: var(--down); }
+.zkeys .bar button { padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); }
+.zkeys .bar button:hover { background: var(--hover); color: var(--text); }
+.zkeys .bar button.on { color: var(--accent); border-color: var(--current-line); }
+.zkeys .status { color: var(--muted); font-size: 12px; }
+.zkeys .tree { flex: 1 1 auto; min-height: 120px; max-height: 50vh; overflow: auto; }
+.zkeys .detail { flex: 0 1 auto; max-height: 45vh; overflow: auto; border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.zkeys .detail .key { font-family: ui-monospace, monospace; word-break: break-all; }
+.zkeys .detail .meta { color: var(--muted); }
+.zkeys .detail pre { max-height: 30vh; overflow: auto; margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; }
+
+/* SpiriSynq objects. */
+.path-tree .line[data-kind~="object"] .name { color: var(--synq); font-weight: 600; }
+.path-tree .line[data-kind~="object"] .value { color: var(--synq); opacity: .8; }
+
+/* Values that don't fit their object's schema, and what's above them. */
+.path-tree .line[data-kind~="problem"] .name, .path-tree .line[data-kind~="problem"] .value { color: var(--down); }
+.path-tree .line[data-kind~="problems"] .name::after { content: " ●"; color: var(--down); }
+.zkeys .detail .problem { color: var(--down); }

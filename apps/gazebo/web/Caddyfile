@@ -2,6 +2,10 @@
 	handle /ws {
 		reverse_proxy {$GZ_WEBSOCKET:gz:9002}
 	}
+	# Zenoh's remote API, for zenoh-ts in the page; see zenoh-ws in compose.yaml.
+	handle /zenoh {
+		reverse_proxy {$ZENOH_WS:zenoh-ws:10000}
+	}
 	# Model and world files; the map also reads the world's georeference here.
 	handle_path /models/* {
 		reverse_proxy {$GZ_ASSETS:gz-assets:9003}
