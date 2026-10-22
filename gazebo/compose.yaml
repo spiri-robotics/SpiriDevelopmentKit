@@ -1,0 +1,27 @@
+# gazebo: a Gazebo Jetty world. Gazebo talks gz-transport over zenoh, through
+# the zenoh-router app on the `spirisynq` network, so robots (and a
+# developer's native `gz sim -g`) reach it by partition, not by address.
+# Install zenoh-router first. To see the world, install debug-map.
+#
+# Optional: robots fly without it, they just have no world to spawn into.
+services:
+  gazebo:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
+    restart: unless-stopped
+    networks:
+      - spirisynq
+
+  # Same image, serving the world's model and world files over HTTP. debug-map
+  # reads meshes and the world's georeference from here. See
+  # gz/asset_server.py.
+  gazebo-assets:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
+    restart: unless-stopped
+    command: ["python3", "/usr/local/bin/gz-asset-server"]
+    networks:
+      - spirisynq
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

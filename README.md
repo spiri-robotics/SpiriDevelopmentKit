@@ -7,8 +7,10 @@ This repository builds the images. To install them, add
 [Appsource-Spiri-Simulation](https://github.com/spiri-robotics/Appsource-Spiri-Simulation)
 to SpiriConfig.
 
-Working on the SDK itself? See [docs/architecture.md](docs/architecture.md).
-Each app under `apps/` runs from source with:
+Working on the SDK itself? Start with
+[docs/getting-started.md](docs/getting-started.md), then
+[docs/architecture.md](docs/architecture.md).
+Each top-level app directory runs from source with:
 
 ```console
 $ docker compose -f compose.yaml -f compose.dev.yaml up --build

@@ -1,0 +1,13 @@
+# Build from source instead of pulling:
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build
+#
+# The robot also gets your checkout as an app store, read-only, so the apps
+# it installs from SpiriDevelopmentKit are your working tree. Set SDK_SOURCE
+# in a .env next to this file; it can't be found relative to it, because
+# compose resolves paths through the app's symlink, not the repo's.
+services:
+  robot:
+    image: sdk-sim-robot:dev
+    build: robot
+    volumes:
+      - ${SDK_SOURCE:?set SDK_SOURCE in .env to your SpiriDevelopmentKit checkout}:/var/lib/spiriconfig/stores/SpiriDevelopmentKit:ro

@@ -1,0 +1,15 @@
+# sim-agent: puts a simulated Mu into the world, installed inside a sim-robot.
+# It spawns the robot's airframe through Gazebo's create service over zenoh,
+# and spawns it again whenever the world restarts. Nothing on the world side
+# knows about it; see docs/architecture.md.
+#
+# Runs in the robot's own network namespace, so its hostname is the robot's
+# name, and it talks to zenoh through the robot's own router.
+services:
+  agent:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-agent:edge
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Empty: from the robot's name, mu-N is index N-1.
+      ROBOT_INDEX: ${ROBOT_INDEX:-}

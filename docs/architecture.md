@@ -42,8 +42,8 @@ appliance (docker)
 ├── sdk-spiriconfig   SpiriConfig in a container, host docker socket mounted.
 │                     Manages the sim stacks; each robot's UI appears in it.
 ├── zenoh-router      The one router everything meets at, sim and real.
-├── world             Stock Gazebo Jetty (zenoh backend) + ardupilot_gazebo.
-├── map               CesiumJS operator view and offline map tiles (proposed).
+├── gazebo            Stock Gazebo Jetty (zenoh backend) + ardupilot_gazebo.
+├── debug-map         CesiumJS view of the sim and of zenoh, its bridge and index.
 ├── registry          Image mirror shared by every robot's inner dockerd.
 └── mu-1 … mu-N       One docker-in-docker container per simulated robot,
                       each running its own SpiriConfig and robot apps.
@@ -101,7 +101,7 @@ Everything else is the same app on both: mavlink-router, zenoh, and the
 operator's own code, such as the helipad detector. Moving from sim to hardware
 (#97) means swapping the first column for the third and changing nothing else.
 
-The image is `apps/sim-robot/`: stock `docker:dind` plus SpiriConfig, with an
+The image is `sim-robot/`: stock `docker:dind` plus SpiriConfig, with an
 entrypoint that runs both. The inner dockerd listens on its unix socket only,
 not the dind default `tcp/2375`, which would hand the robot to anything on the
 bridge. SpiriConfig runs with `SPIRICONFIG_AUTH=none` and TLS off, and with a
@@ -118,6 +118,12 @@ appliance names from inner containers anyway. Routers don't connect to each
 other by default, so the appliance's `zenoh-router` sets
 `scouting/multicast/autoconnect` to include routers and joins each robot's
 router as it appears. Robots carry no sim-specific zenoh config.
+
+On its first boot a robot installs and starts the apps every Mu runs, listed in
+`ROBOT_APPS` as `<store>/<app>`. Today that's only the router. After that
+they're ordinary installed apps, brought back by the inner dockerd's restart
+policy. Appsource-Spiri-Mu doesn't exist yet, so the router comes from
+Appstore-Spiri_development for now.
 
 A sim robot installs from two appsources. The real **Appsource-Spiri-Mu**
 provides everything except its ArduPilot and camera connectors, which the robot
@@ -215,7 +221,8 @@ robots from what they publish on SpiriSynq, not from Gazebo, and it is the same
 view for sim and real robots. Gazebo's world geometry is a layer on that globe.
 The gzweb viewer it replaced is gone.
 
-**Today (interim).** The map is `apps/gazebo/web/`. Robots don't publish
+**Today (interim).** The map is its own app, `debug-map/`, separate from the
+simulation so either can be restarted or replaced alone. The page is `debug-map/web/`. Robots don't publish
 telemetry over zenoh yet, so it draws models from Gazebo's websocket instead
 (scene, deletions, poses) and anchors them with the world's
 `<spherical_coordinates>`, read from the world SDF via `gazebo-assets`. The 3D
@@ -244,7 +251,7 @@ would run with full trust in the page.
 **Zenoh in the page.** Applets reach zenoh directly through `ctx.zenoh`
 (`web/zenoh.js`). It wraps zenoh-ts, which talks over a websocket (Caddy's
 `/zenoh`) to `zenoh-ws`, a zenoh-ts remote-api bridge that runs from the
-`gazebo-web` image and connects to the router as a client. The bridge, the
+`debug-map` image and connects to the router as a client. The bridge, the
 zenoh-ts package and the router are all on 1.8.0, and the bridge and the
 package must match. The session opens when an applet first needs it,
 reconnects by itself, and declares its subscriptions again afterwards. The
@@ -255,7 +262,7 @@ write every key, so the page is only as private as SpiriConfig's login.
 crosses the websocket, and one camera stream is enough to starve it. At 24 MB/s
 of camera frames, a page subscribed to `**` received a few frames a second and
 its telemetry froze. Publishers weren't slowed. Whole-network views ask
-`zenoh-index` (`index/index.py`) instead. It subscribes to `**` next to the
+`zenoh-index` (`debug-map/index/index.py`) instead. It subscribes to `**` next to the
 router and keeps each key's latest sample, count, rate and a short text preview.
 Pages poll `@sdk/index?since=<rev>` for what changed, and fetch one key's value
 from `@sdk/index/value`. With the same 24 MB/s that is about 1 KB/s per page,
@@ -412,6 +419,11 @@ This repo builds images. **Appsource-Spiri-Simulation** says how to run them.
   access to it.
 - Each app in this repo keeps a `compose.yaml` that mirrors the appsource's,
   plus a `compose.dev.yaml` that builds from source, for local work.
+- **This repo is itself an appsource**, for development. Each app is a
+  top-level directory with a compose file, which is all SpiriConfig needs to
+  find it. Symlink the checkout into SpiriConfig's store directory, and apps
+  installed from it run your working tree. See
+  [getting-started.md](getting-started.md#developing-the-sdk).
 
 The airgapped appliance ships these appsources already cloned (#146), and every
 image they pin is loaded into its registry.
@@ -419,11 +431,16 @@ image they pin is loaded into its registry.
 ## Repository layout
 
 ```
-apps/<app>/           one directory per appsource app:
-                      compose.yaml (pulls), compose.dev.yaml (builds),
-                      and the source of each image it builds
-apps/gazebo/          gz/ (world image), web/ (Cesium map image)
-apps/map/             (planned) CesiumJS operator view and tile server
+<app>/               one top-level directory per app, so the repo is an
+                      appsource: compose.yaml (pulls), compose.dev.yaml
+                      (builds), and the source of each image it builds.
+                      Any other top-level directory must not have a
+                      compose file, or SpiriConfig lists it as an app.
+gazebo/               gz/ (world image), served by gazebo and gazebo-assets
+debug-map/            web/ (Cesium map and zenoh-ws), index/ (zenoh-index)
+ardupilot-sitl/       sitl/ (ArduCopter SITL image), installed inside a robot
+sim-agent/            agent/ (spawns the robot's airframe), installed inside a robot
+sim-robot/            robot/ (docker-in-docker + SpiriConfig image)
 compose.yaml          (planned) the whole appliance, for development
 models/               robot SDF templates and meshes (shipped in robot images)
 worlds/               world SDFs per KPI scenario
@@ -447,7 +464,7 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
 - [x] gzweb renders the world through Caddy (since replaced by the Cesium map).
       Gazebo's websocket sends meshes at ~245 KB/s, so the viewer fetches them
       over HTTP instead
-      (`apps/gazebo/gz/asset_server.py`).
+      (`gazebo/gz/asset_server.py`).
 - [ ] A leftover ArduPilot model with no SITL attached doesn't stall lockstep.
 - [ ] Two robots, then five, in lockstep: real-time factor, and GPS correct with
       a shared `--home`.

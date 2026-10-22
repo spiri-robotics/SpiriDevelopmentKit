@@ -1,0 +1,23 @@
+# ardupilot-sitl: the flight controller of a simulated Mu, installed inside a
+# sim-robot. Stands in for the FC board; everything that talks MAVLink to it
+# talks to it the same way. Install sim-agent too, which puts the robot's
+# airframe into the world for SITL to fly.
+#
+# Runs in the robot's own network namespace, which sits on the appliance
+# network: it reaches the world by name, and QGroundControl reaches it at the
+# robot's address, on tcp 5760 + 10 * index.
+services:
+  sitl:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/ardupilot-sitl:edge
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # Must be the world's <spherical_coordinates>, or GPS is quietly wrong.
+      SITL_HOME: ${SITL_HOME:-44.6488,-63.5752,0,0}
+      # Empty: from the robot's name, mu-N is index N-1.
+      ROBOT_INDEX: ${ROBOT_INDEX:-}
+    volumes:
+      - ardupilot:/var/lib/ardupilot
+
+volumes:
+  ardupilot:

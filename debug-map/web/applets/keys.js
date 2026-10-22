@@ -4,7 +4,7 @@ import { parseSchema, renderSchema } from "../synq-schema.js";
 import "./keys.css";
 
 // Everything published on zenoh, as a tree of keys with each key's latest
-// value. The page doesn't subscribe to `**`: zenoh-index (apps/gazebo/index)
+// value. The page doesn't subscribe to `**`: zenoh-index (debug-map/index)
 // does, next to the router, and the page polls it for what changed, then
 // fetches the selected key's value. So big streams such as camera frames
 // never cross the websocket unless one is selected, and then only a few

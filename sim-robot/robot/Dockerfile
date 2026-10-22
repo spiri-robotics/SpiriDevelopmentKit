@@ -8,6 +8,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /usr/local/bin/uv
 # git: SpiriConfig's app store clones appsources. linux-pam: SpiriConfig
 # loads it even with auth off.
 RUN apk add --no-cache git linux-pam
+# A store can be a checkout someone else owns, such as one mounted for
+# development; see ../compose.dev.yaml.
+RUN git config --system --add safe.directory '*'
 
 # Pinned to a commit until a release has configurable session cookies, which
 # keep each robot's login separate from the SDK SpiriConfig's on one origin.
@@ -25,7 +28,12 @@ ENV SPIRICONFIG_HOST=0.0.0.0 \
     SPIRICONFIG_TLS=off \
     SPIRICONFIG_DOCKER_COMPOSE_DIR=/srv/compose \
     SPIRICONFIG_APPSTORE_STORE_DIR=/var/lib/spiriconfig/stores \
-    SPIRICONFIG_APPSTORE_STORES='["https://github.com/spiri-robotics/Appsource-Spiri-Simulation"]'
+    SPIRICONFIG_APPSTORE_STORES='["https://github.com/spiri-robotics/Appsource-Spiri-Simulation", "https://github.com/spiri-robotics/Appstore-Spiri_development"]'
+
+# Apps every Mu runs, installed and started on the robot's first boot, as
+# <store>/<app>. Appstore-Spiri_development stands in for Appsource-Spiri-Mu,
+# which doesn't exist yet; its zenoh-router is the Mu's own.
+ENV ROBOT_APPS="Appstore-Spiri_development/zenoh-router"
 
 COPY robot-entrypoint.sh /usr/local/bin/robot-entrypoint
 

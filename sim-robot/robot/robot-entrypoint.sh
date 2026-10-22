@@ -49,6 +49,22 @@ if [ -z "${SPIRICONFIG_STORAGE_SECRET:-}" ]; then
 	export SPIRICONFIG_STORAGE_SECRET
 fi
 
+# First boot: install and start the apps every Mu runs. After that they're
+# ordinary installed apps, and dockerd's restart policy brings them back. A
+# robot that can't reach its stores still boots, just without them.
+missing=
+for app in ${ROBOT_APPS:-}; do
+	[ -e "$SPIRICONFIG_DOCKER_COMPOSE_DIR/${app##*/}" ] || missing="$missing $app"
+done
+if [ -n "$missing" ]; then
+	spiriconfig appstore check || echo >&2 "robot: could not fetch app stores"
+	for app in $missing; do
+		if ! { spiriconfig appstore install "$app" && spiriconfig docker up "${app##*/}"; }; then
+			echo >&2 "robot: could not install $app"
+		fi
+	done
+fi
+
 spiriconfig serve &
 spiriconfig=$!
 

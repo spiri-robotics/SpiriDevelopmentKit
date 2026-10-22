@@ -28,13 +28,17 @@ jobs:
       matrix:
         include:
           - name: gazebo
-            context: apps/gazebo/gz
-          - name: gazebo-web
-            context: apps/gazebo/web
+            context: gazebo/gz
+          - name: debug-map
+            context: debug-map/web
           - name: zenoh-index
-            context: apps/gazebo/index
+            context: debug-map/index
           - name: sim-robot
-            context: apps/sim-robot/robot
+            context: sim-robot/robot
+          - name: ardupilot-sitl
+            context: ardupilot-sitl/sitl
+          - name: sim-agent
+            context: sim-agent/agent
     steps:
       - uses: actions/checkout@v4
 

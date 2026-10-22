@@ -1,0 +1,52 @@
+# debug-map: a Cesium globe in SpiriConfig for looking at the simulation and
+# everything on zenoh. A stand-in for the operator's view, not the final one. Every tool on it is
+# an applet; see docs/architecture.md. Install zenoh-router first.
+#
+# Draws the Gazebo world as a layer when the gazebo app is installed, and
+# works without it.
+services:
+  debug-map:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/debug-map:edge
+    restart: unless-stopped
+    environment:
+      GZ_WEBSOCKET: gazebo:9002
+      GZ_ASSETS: gazebo-assets:9003
+      ZENOH_WS: zenoh-ws:10000
+    depends_on:
+      - zenoh-ws
+    networks:
+      - spirisynq
+    labels:
+      spiriconfig.plugin.name: debug-map
+      spiriconfig.plugin.port: "8080"
+      spiriconfig.plugin.title: Debug map
+      spiriconfig.plugin.icon: map
+
+  # Same image, bridging the page's zenoh-ts websocket onto the router as a
+  # zenoh client. It is the page's whole view of zenoh: anything that can
+  # reach the page can read and write every key through it.
+  zenoh-ws:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/debug-map:edge
+    restart: unless-stopped
+    command:
+      - zenoh-bridge-remote-api
+      - --mode=client
+      - --connect=tcp/zenoh-router:7447
+      - --no-multicast-scouting
+      - --ws-port=10000
+    networks:
+      - spirisynq
+
+  # Everything on zenoh, summarised for the page: it subscribes to `**` here,
+  # next to the router, so big streams never reach browsers that aren't
+  # looking at them. See index/index.py.
+  zenoh-index:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/zenoh-index:edge
+    restart: unless-stopped
+    networks:
+      - spirisynq
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

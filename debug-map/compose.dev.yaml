@@ -1,16 +1,11 @@
 # Build from source instead of pulling:
 #   docker compose -f compose.yaml -f compose.dev.yaml up --build
 services:
-  gazebo:
-    image: sdk-gazebo:dev
-    build: gz
-  gazebo-assets:
-    image: sdk-gazebo:dev
-  gazebo-web:
-    image: sdk-gazebo-web:dev
+  debug-map:
+    image: sdk-debug-map:dev
     build: web
   zenoh-ws:
-    image: sdk-gazebo-web:dev
+    image: sdk-debug-map:dev
   zenoh-index:
     image: sdk-zenoh-index:dev
     build: index
