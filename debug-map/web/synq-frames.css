@@ -1,0 +1,17 @@
+/* SpiriSynq frame labels (synq-frames.js places them), each just beside its
+   frame's arrow: the topic, which opens and closes the details under it. */
+.sf-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.sf-label {
+  position: absolute; left: 0; top: 0; padding: 2px 6px; border-radius: 4px;
+  border: 1px solid transparent; background: rgb(14 16 19 / 0.72);
+  white-space: nowrap; pointer-events: auto;
+  font: 11px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--text);
+}
+.sf-head { cursor: pointer; user-select: none; }
+.sf-head b { color: var(--synq); font-weight: 600; }
+.sf-head:hover b { color: var(--accent); }
+.sf-body { display: none; cursor: text; user-select: text; }
+.sf-label.open { border-color: var(--current-line); background: rgb(22 25 29 / 0.94); }
+.sf-label.open .sf-body { display: block; }
+.sf-body .cls, .sf-body .k { color: var(--muted); }
+.sf-body .acc { color: #ffb86c; }

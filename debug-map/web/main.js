@@ -8,6 +8,7 @@ import { Gazebo } from "./gz-transport.js";
 import { GazeboWorld } from "./gz-world.js";
 import { addZenohProtocol, startOfflineLayers } from "./offline-map.js";
 import { Actions, Entities, Layers, startShell } from "./shell.js";
+import { SynqFrames } from "./synq-frames.js";
 import { Zenoh } from "./zenoh.js";
 
 setWorkerUrl(workerUrl);
@@ -107,6 +108,8 @@ const zenohUrl = new URL("zenoh", window.location.href);
 zenohUrl.protocol = zenohUrl.protocol === "https:" ? "wss:" : "ws:";
 const zenoh = new Zenoh(zenohUrl.href);
 addZenohProtocol(zenoh);
+// Every SpiriSynq Position, as a tree of frames (synq-frames.js).
+const frames = new SynqFrames(zenoh);
 
 // Changing the world, for applets, over zenoh: any model moves through
 // Gazebo's set_pose; a robot resets through its sim-agent, which respawns it.
@@ -338,9 +341,15 @@ async function loadWorld() {
 
 map.on("load", () => {
   map.addLayer(world3d);
-  world3d.setTerrain(!!map.getTerrain());
-  map.on("terrain", () => world3d.setTerrain(!!map.getTerrain()));
+  map.addLayer(frames);
+  const onTerrain = () => {
+    world3d.setTerrain(!!map.getTerrain());
+    frames.setTerrain(!!map.getTerrain());
+  };
+  onTerrain();
+  map.on("terrain", onTerrain);
   // Sections top to bottom as they're drawn.
+  layers.section("SpiriSynq");
   layers.section("Simulation");
   layers.section("Online");
   layers.section("Offline", "None found on zenoh.");
@@ -350,6 +359,14 @@ map.on("load", () => {
   layers.add("hillshade", "Hillshade", styleLayer("hillshade"), online);
   layers.add("buildings", "3D buildings", styleLayer("buildings"), online);
   startOfflineLayers(map, zenoh, layers);
+  layers.add("synq-frames", "Frames", {
+    get show() {
+      return frames.show;
+    },
+    set show(on) {
+      frames.show = on;
+    },
+  }, { section: "SpiriSynq", info: "Every Position: an arrow along its x axis, fin up, joined to its parent; click a label for angles and accuracy" });
   // Gazebo, as two layers: the world's 3D models and ground outlines, and
   // its entities' labels, drop lines and heights.
   const sim = { section: "Simulation" };

@@ -138,7 +138,10 @@ export function startOfflineLayers(map, zenoh, layers) {
 
   function install(topic, o) {
     const spec = sourceSpec(o);
-    const json = JSON.stringify(spec);
+    // The regions too: one added inside the source's bounds (a layer with a
+    // world base) leaves the spec as it was, but MapLibre still has the tiles
+    // it got before, overzoomed from the base. A new source fetches them anew.
+    const json = JSON.stringify([spec, o.regions]);
     const source = `offline:${o.tile_key}`;
     const old = objects.get(topic);
     const src = sources.get(source);
@@ -184,8 +187,15 @@ export function startOfflineLayers(map, zenoh, layers) {
   }
 
   async function discover() {
-    const replies = await zenoh.query("**/sr_metadata/MapLayer");
-    const topics = replies.flatMap((r) => (r instanceof Error ? [] : [parse(r.payload().toString()).topic]));
+    // All objects, then the MapLayers among them, as zenoh-index and the
+    // cameras applet do: through the router, `**/sr_metadata/MapLayer` gets
+    // no replies from a peer that `**/sr_metadata` reaches (zenoh 1.8).
+    const replies = await zenoh.query("**/sr_metadata");
+    const topics = replies.flatMap((r) => {
+      if (r instanceof Error) return [];
+      const m = parse(r.payload().toString());
+      return m?.classes?.includes("!MapLayer") ? [m.topic] : [];
+    });
     const found = [];
     await Promise.all(
       topics.map(async (topic) => {

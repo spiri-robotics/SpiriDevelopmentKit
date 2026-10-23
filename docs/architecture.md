@@ -440,6 +440,17 @@ change) and checks every value put under the object against it
 (`index/check.py`). Values that don't fit, and keys that aren't fields of the
 object, are shown in red with the reason. Values over 1 MB aren't checked.
 
+The *Frames* layer (`web/synq-frames.js`) draws every SpiriSynq `Position` as
+a frame tree: a 3D arrow along each frame's x axis (heading and pitch for a
+body), with a fin on its top for roll, a line to its `relative_to` parent,
+and a label with its topic. Clicking a label opens its heading, pitch and
+roll against local NED, its mount in the parent, and the pose's 90% accuracy,
+also drawn as a cylinder. Positions are found by
+discovery; poses and mounts come live from `**/pose` and `**/mount`, two
+subscriptions for the whole network that a camera's image never matches.
+Heights are WGS84 and drawn as if above sea level, which is right for SITL
+(no geoid separation) and off by the local separation for a real robot.
+
 Why the robots and not Gazebo:
 
 - **Sim and real look the same.** A sim robot's position comes from SITL
