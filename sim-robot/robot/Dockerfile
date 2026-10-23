@@ -12,13 +12,14 @@ RUN apk add --no-cache git linux-pam
 # development; see ../compose.dev.yaml.
 RUN git config --system --add safe.directory '*'
 
-# Pinned to a commit until a release has configurable session cookies, which
-# keep each robot's login separate from the SDK SpiriConfig's on one origin.
-ARG SPIRICONFIG=git+https://github.com/spiri-robotics/SpiriConfig.git@431dd9f
+# 0.3.2: configurable session cookies, which keep each robot's login separate
+# from the SDK SpiriConfig's on one origin, and plugin frames under the
+# forwarded prefix, so a robot's plugins work inside the SDK SpiriConfig.
+ARG SPIRICONFIG=spiriconfig==0.3.2
 ENV UV_PYTHON_INSTALL_DIR=/opt/python \
     UV_TOOL_DIR=/opt/uv-tools \
     UV_TOOL_BIN_DIR=/usr/local/bin
-RUN uv tool install --python 3.13 "spiriconfig @ ${SPIRICONFIG}" \
+RUN uv tool install --python 3.13 "${SPIRICONFIG}" \
     && uv cache clean
 
 # Behind the SDK SpiriConfig, which owns the login and the TLS.

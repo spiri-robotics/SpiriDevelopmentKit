@@ -66,6 +66,9 @@ services:
       - docker:/var/lib/docker
       - compose:/srv/compose
       - spiriconfig:/var/lib/spiriconfig
+      # The robot's Spiri Cloud configuration, from cloud-link: a host
+      # directory on a real Mu, so it has to outlive the container here.
+      - spiri-cloud:/var/lib/spiri-cloud
     networks:
       - spirisynq
     ports:
@@ -82,6 +85,7 @@ volumes:
   docker:
   compose:
   spiriconfig:
+  spiri-cloud:
 
 networks:
   spirisynq:

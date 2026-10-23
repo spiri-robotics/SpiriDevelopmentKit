@@ -129,8 +129,8 @@ $ uvx spiriconfig docker up mu-1 --dev
 ```
 
 The robot is a computer of its own: a docker daemon and a SpiriConfig, like a
-real Mu's. On its first boot it installs four apps into itself, and builds
-three of them, which takes a few minutes:
+real Mu's. On its first boot it installs six apps into itself, and builds
+five of them, which takes a few minutes:
 
 | App inside the robot | What it does | On a real Mu |
 | --- | --- | --- |
@@ -138,6 +138,8 @@ three of them, which takes a few minutes:
 | `sim-agent` | Puts the robot's airframe into the world, and back after the world restarts | nothing: a real Mu has a body |
 | `ardupilot-sitl` | The flight controller: ArduCopter SITL, flying the airframe in Gazebo | the flight controller board |
 | `sim-camera-ingress` | The gimbal camera's picture, on SpiriSynq. Idle without *Gimbal camera* | `camera-ingress`, from the real camera |
+| `cloud-link` | Links the robot to a Spiri Cloud organization, from its *Spiri Cloud* page, and serves its camera to the organization's Frigate | the same app |
+| `netbird` | Joins the organization's VPN once the robot is linked; idle otherwise | the same app |
 
 Watch for the end of the first boot:
 

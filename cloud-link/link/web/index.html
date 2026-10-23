@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spiri Cloud</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Spiri Cloud</h1>
+      <span id="badge" class="badge"></span>
+    </header>
+
+    <section id="unlinked" hidden>
+      <p>Link this robot to your organization's Spiri Cloud to receive its configuration: VPN, uploads and the rest.</p>
+      <form id="link-form">
+        <label class="field">Cloud address
+          <input id="url" placeholder="https://drones.example.spiri.ca" autocomplete="url" spellcheck="false" required>
+        </label>
+        <label class="field">Robot name
+          <input id="name" autocomplete="off" spellcheck="false" maxlength="64">
+        </label>
+        <p class="muted small">The name is a suggestion. Whoever approves the link can change it.</p>
+        <p id="fixed-note" class="muted small" hidden>Greyed-out fields are fixed in this app's settings in SpiriConfig.</p>
+        <div class="row"><button id="link" class="primary" type="submit">Link</button></div>
+      </form>
+    </section>
+
+    <section id="linking" hidden>
+      <p>On any phone or computer, open this link, sign in and approve the robot:</p>
+      <div class="approve">
+        <img id="qr" alt="QR code of the approval link" width="200" height="200">
+        <div class="approve-text">
+          <a id="approve-link" target="_blank" rel="noopener"></a>
+          <p class="muted small">Or go to <span id="verify-uri"></span> and enter:</p>
+          <div id="code" class="code"></div>
+          <p class="muted small">Check that the cloud shows the same code. <span id="expires"></span></p>
+        </div>
+      </div>
+      <div id="poll-error" class="error small"></div>
+      <div class="row"><button id="cancel" type="button">Cancel</button></div>
+    </section>
+
+    <section id="linked" hidden>
+      <dl>
+        <dt>Name</dt><dd id="l-name"></dd>
+        <dt>Cloud</dt><dd><a id="l-url" target="_blank" rel="noopener"></a></dd>
+        <dt>Robot ID</dt><dd id="l-id" class="mono"></dd>
+        <dt>Configuration</dt><dd id="l-fetched"></dd>
+      </dl>
+      <div id="fetch-error" class="error small"></div>
+      <div id="mismatch" class="notice small" hidden></div>
+      <div class="row">
+        <button id="refresh" type="button">Fetch now</button>
+        <button id="unlink" type="button" class="danger">Unlink</button>
+        <button id="forget" type="button" class="danger" hidden>Forget anyway</button>
+      </div>
+      <h2>Configuration</h2>
+      <p class="muted small">Written to <code id="env-file"></code>, for apps to read with compose's <code>env_file</code>. Secrets are hidden.</p>
+      <table id="config"></table>
+    </section>
+
+    <div id="notice" class="notice small" hidden></div>
+    <div id="error" class="error small"></div>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

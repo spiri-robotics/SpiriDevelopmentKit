@@ -1,0 +1,109 @@
+# cloud-link: links the robot to its organization's Spiri Cloud, and keeps
+# the configuration the cloud has for it in an env file on the host. Nothing
+# about it is simulated: it's here until there's an Appsource-Spiri-Mu for it
+# to move to. The cloud side's contract is cloud_deploy's docs/drones-api.md.
+#
+# Link from the "Spiri Cloud" page in SpiriConfig. The credential stays in
+# this app's volume. The configuration goes to /var/lib/spiri-cloud/cloud.env
+# on the host, refreshed every minute; apps that use it read it with
+#
+#   env_file:
+#     - path: /var/lib/spiri-cloud/cloud.env
+#       required: false
+#
+# and treat a missing key as that feature not being set up. Compose reads it
+# when a container is created, so a change reaches an app when it's next
+# brought up.
+#
+# The settings below fix what the page would otherwise ask for, to provision
+# a robot for one organization: with a cloud address set, linking only asks
+# someone there to approve it.
+#
+# Video: the cloud's Frigate pulls the robot's camera over WHEP from port
+# 8889 on its NetBird address, at /camera/whep (docs/drones-api.md, "Serve
+# live video"). camera-whep is a zenoh app, so it stays on `spirisynq` like
+# every zenoh app: it consumes the camera named in the Camera setting over
+# SpiriSynq and serves it as WHEP (H.264) only on the robot's loopback.
+# mediamtx, on the host network with no zenoh in it (only zenoh-router-host
+# may be), pulls that while someone is watching and serves it on the robot's
+# own addresses, NetBird's included, relaying the H.264 untouched. Nobody
+# outside can reach it until netbird has joined the VPN; NetBird's ACLs let
+# only the organization's Frigate in.
+x-spiri-settings:
+  - env: CLOUD_LINK_CAMERA
+    label: Camera
+    help: >-
+      The SpiriSynq camera Spiri Cloud's Frigate is shown, by topic.
+      ./camera means this robot's own camera topic, <robot>/camera.
+    default: ./camera
+  - env: CLOUD_LINK_URL
+    label: Cloud address
+    help: >-
+      The organization's Drones app, e.g. https://drones.example.spiri.ca.
+      Set, the Spiri Cloud page links only there; empty, it asks.
+    default: ""
+  - env: CLOUD_LINK_NAME
+    label: Robot name
+    help: >-
+      The name the robot asks to be linked as. Whoever approves the link can
+      still change it in the cloud. Empty, the page asks, offering the
+      robot's hostname.
+    default: ""
+  - env: CLOUD_LINK_INTERVAL
+    widget: number
+    label: Fetch interval (s)
+    help: How often the robot checks the cloud for a new configuration.
+    default: "60"
+    min: 10
+    max: 86400
+    advanced: true
+
+services:
+  cloud-link:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/cloud-link:edge
+    restart: unless-stopped
+    environment:
+      CLOUD_LINK_URL: ${CLOUD_LINK_URL:-}
+      CLOUD_LINK_NAME: ${CLOUD_LINK_NAME:-}
+      CLOUD_LINK_INTERVAL: ${CLOUD_LINK_INTERVAL:-60}
+    volumes:
+      - cloud-link:/data
+      - /var/lib/spiri-cloud:/out
+      # The host's name is the name the robot offers the cloud.
+      - /etc/hostname:/etc/host-hostname:ro
+    labels:
+      spiriconfig.plugin.name: cloud-link
+      spiriconfig.plugin.port: "8080"
+      spiriconfig.plugin.title: Spiri Cloud
+      spiriconfig.plugin.icon: cloud
+
+  camera-whep:
+    image: ghcr.io/spiri-robotics/spiricamera:edge
+    restart: unless-stopped
+    # A mirror of the camera, served as WHEP; see camera_whep.py.
+    entrypoint: ["python", "/opt/camera-whep/camera_whep.py"]
+    environment:
+      CLOUD_LINK_CAMERA: ${CLOUD_LINK_CAMERA:-./camera}
+    volumes:
+      - ./camera_whep.py:/opt/camera-whep/camera_whep.py:ro
+      # The host's name is the base topic, which ./ is relative to.
+      - /etc/hostname:/etc/spirisynq_base_topic:ro
+    networks:
+      - spirisynq
+    ports:
+      - "127.0.0.1:8890:8889"
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.2
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+
+volumes:
+  cloud-link:
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

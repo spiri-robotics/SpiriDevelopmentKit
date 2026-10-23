@@ -1,0 +1,38 @@
+# cloud-link's MediaMTX: WebRTC only, one path, read-only. Anything not set
+# here is MediaMTX's default.
+logLevel: info
+
+# Only WHEP. No control API, metrics, recording or other protocols.
+api: no
+metrics: no
+pprof: no
+playback: no
+rtsp: no
+rtmp: no
+hls: no
+srt: no
+moq: no
+
+webrtc: yes
+webrtcAddress: :8889
+# Media on one fixed UDP port, on every address the robot has (NetBird's
+# among them). No STUN: viewers come over the VPN.
+webrtcLocalUDPAddress: :8189
+webrtcIPsFromInterfaces: yes
+webrtcICEServers2: []
+
+# Anyone who can reach it may watch; nobody may publish. Reaching it at all
+# is NetBird's decision.
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+
+paths:
+  # camera-whep's WHEP endpoint, on the robot's loopback. Pulled only while
+  # someone is watching, so an unwatched camera costs no encoding.
+  camera:
+    source: whep://127.0.0.1:8890/whep
+    sourceOnDemand: yes

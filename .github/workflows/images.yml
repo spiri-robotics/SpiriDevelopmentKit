@@ -43,6 +43,10 @@ jobs:
             context: sim-agent/agent
           - name: sim-camera-ingress
             context: sim-camera-ingress/ingress
+          - name: cloud-link
+            context: cloud-link/link
+          - name: netbird
+            context: netbird/client
     steps:
       - uses: actions/checkout@v4
 
