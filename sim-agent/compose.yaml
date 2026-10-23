@@ -10,6 +10,3 @@ services:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-agent:edge
     restart: unless-stopped
     network_mode: host
-    environment:
-      # Empty: from the robot's name, mu-N is index N-1.
-      ROBOT_INDEX: ${ROBOT_INDEX:-}

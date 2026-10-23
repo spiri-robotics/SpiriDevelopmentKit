@@ -2,16 +2,44 @@
 # container running its own dockerd and SpiriConfig; robot apps install and
 # run inside it as ordinary compose stacks, the same as on a real Mu. Its
 # SpiriConfig shows up in the SDK SpiriConfig at /plugin/<name>/.
+# Install zenoh-router first; the robot joins the `spirisynq` network it
+# creates.
 #
-# The robot's name is its hostname, which is also its SpiriSynq topic prefix.
-# One robot per install: set ROBOT_NAME (and the project name) per copy, e.g.
-#   ROBOT_NAME=mu-2 docker compose -p mu-2 up -d
-# Install zenoh-router first; robots join the `spirisynq` network it creates.
+# The robot's identity reaches its apps through the environment of its
+# SpiriConfig, which compose reads when it starts them: ardupilot-sitl takes
+# its MAVLink system ID from ROBOT_SYSID. A real Mu's OS sets the same
+# variables.
 #
 # Inside, a robot is networked like a real Mu: it runs the Mu's own
 # zenoh-router app, whose host-mode router sits on `spirisynq` here and is
 # found by the appliance's router. Inner apps only ever talk to their own
 # router, so they need no appliance addresses or names.
+x-spiri-settings:
+  - env: ROBOT_NAME
+    label: Name
+    help: The robot's hostname, and the prefix of everything it publishes.
+    default: mu-1
+    pattern: "^[a-z][a-z0-9-]*$"
+  - env: ROBOT_SYSID
+    widget: number
+    label: MAVLink system ID
+    default: "1"
+    min: 1
+    max: 254
+  - env: MAVLINK_PORT
+    widget: number
+    label: QGroundControl port
+    help: Connect QGC over TCP to this machine on this port.
+    default: "5760"
+    min: 1
+    max: 65535
+  - env: SDK_SOURCE
+    label: SpiriDevelopmentKit checkout
+    help: >-
+      Development only (Up (dev)): the robot installs its apps from this
+      checkout and builds them from your working tree.
+    advanced: true
+
 services:
   robot:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-robot:edge
@@ -20,6 +48,7 @@ services:
     privileged: true
     restart: unless-stopped
     environment:
+      ROBOT_SYSID: ${ROBOT_SYSID:-1}
       # Optional: the appliance's pull-through registry, e.g. http://registry:5000
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
     volumes:
@@ -28,6 +57,10 @@ services:
       - spiriconfig:/var/lib/spiriconfig
     networks:
       - spirisynq
+    ports:
+      # MAVLink from the robot's flight controller (ardupilot-sitl), for
+      # QGroundControl: connect to tcp <this machine>:5760.
+      - "${MAVLINK_PORT:-5760}:5760"
     labels:
       spiriconfig.plugin.name: ${ROBOT_NAME:-mu-1}
       spiriconfig.plugin.port: "8337"

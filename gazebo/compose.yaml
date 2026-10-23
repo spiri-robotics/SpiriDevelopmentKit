@@ -4,20 +4,33 @@
 # Install zenoh-router first. To see the world, install debug-map.
 #
 # Optional: robots fly without it, they just have no world to spawn into.
+x-spiri-settings:
+  - env: GZ_WORLD
+    widget: select
+    label: World
+    help: >-
+      The world to load. Robots spawn into whichever world is up, and take
+      their GPS home from its location.
+    options: [sdk]
+    default: sdk
+
 services:
   gazebo:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
     restart: unless-stopped
+    command: ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/${GZ_WORLD:-sdk}.sdf"]
     networks:
       - spirisynq
 
-  # Same image, serving the world's model and world files over HTTP. debug-map
-  # reads meshes and the world's georeference from here. See
-  # gz/asset_server.py.
+  # Same image, serving the world's model and world files over HTTP.
+  # debug-map reads meshes from here, and robots read the world's location
+  # (/world.sdf). See gz/asset_server.py.
   gazebo-assets:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
     restart: unless-stopped
     command: ["python3", "/usr/local/bin/gz-asset-server"]
+    environment:
+      GZ_WORLD: ${GZ_WORLD:-sdk}
     networks:
       - spirisynq
 

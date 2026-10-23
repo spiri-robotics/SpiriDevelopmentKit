@@ -1,13 +1,20 @@
 # Build from source instead of pulling:
 #   docker compose -f compose.yaml -f compose.dev.yaml up --build
 #
-# The robot also gets your checkout as an app store, read-only, so the apps
-# it installs from SpiriDevelopmentKit are your working tree. Set SDK_SOURCE
-# in a .env next to this file; it can't be found relative to it, because
-# compose resolves paths through the app's symlink, not the repo's.
+# The robot also gets your checkout as an app store, read-only, and on first
+# boot installs its robot apps from it, built from your working tree. Set
+# SDK_SOURCE in the robot's settings (advanced); it can't be found relative to it,
+# because compose resolves paths through the app's symlink, not the repo's.
 services:
   robot:
     image: sdk-sim-robot:dev
     build: robot
+    environment:
+      ROBOT_APPS: >-
+        Appstore-Spiri_development/zenoh-router
+        SpiriDevelopmentKit/sim-agent
+        SpiriDevelopmentKit/ardupilot-sitl
+      # Start them with their compose.dev.yaml, which builds the images.
+      ROBOT_DEV: "1"
     volumes:
       - ${SDK_SOURCE:?set SDK_SOURCE in .env to your SpiriDevelopmentKit checkout}:/var/lib/spiriconfig/stores/SpiriDevelopmentKit:ro

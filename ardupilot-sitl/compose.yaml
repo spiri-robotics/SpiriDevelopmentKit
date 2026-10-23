@@ -5,17 +5,18 @@
 #
 # Runs in the robot's own network namespace, which sits on the appliance
 # network: it reaches the world by name, and QGroundControl reaches it at the
-# robot's address, on tcp 5760 + 10 * index.
+# robot's address on tcp 5760, which sim-robot publishes.
 services:
   sitl:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/ardupilot-sitl:edge
     restart: unless-stopped
     network_mode: host
     environment:
-      # Must be the world's <spherical_coordinates>, or GPS is quietly wrong.
-      SITL_HOME: ${SITL_HOME:-44.6488,-63.5752,0,0}
-      # Empty: from the robot's name, mu-N is index N-1.
-      ROBOT_INDEX: ${ROBOT_INDEX:-}
+      # The robot's, from the environment of its SpiriConfig.
+      ROBOT_SYSID: ${ROBOT_SYSID:-1}
+      # Empty: the world's <spherical_coordinates>, read from gazebo-assets.
+      # Set as lat,lon,alt,heading only to fly somewhere the world isn't.
+      SITL_HOME: ${SITL_HOME:-}
     volumes:
       - ardupilot:/var/lib/ardupilot
 

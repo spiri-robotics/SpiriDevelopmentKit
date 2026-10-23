@@ -2,9 +2,10 @@
 
 A plain zenoh client: Gazebo's gz-transport, on its zenoh backend, serves
 `/world/<world>/create` as a queryable at `@/<partition>@/world/<world>/create`
-taking a raw protobuf, and announces it with a liveliness token. Watching that
-token is how we notice a world (re)start; each time it appears we remove our
-model, in case it outlived us, and create it again.
+taking a raw protobuf, and announces it with a liveliness token. Watching those
+tokens is how we find the world, whatever it's called, and notice it
+(re)starting; each time it appears we remove our model, in case it outlived
+us, and create it again.
 
 The model is rendered from iris.sdf: named after the robot, with its
 ArduPilotPlugin listening on 9002 + 10 * index, where this robot's SITL sends.
@@ -22,24 +23,15 @@ from pathlib import Path
 
 import zenoh
 
-WORLD = os.environ.get("GZ_WORLD", "sdk")
 PARTITION = os.environ.get("GZ_PARTITION", "sdk")
 ROUTER = os.environ.get("ZENOH_CONNECT", "tcp/127.0.0.1:7447")
 NAME = os.environ.get("ROBOT_NAME") or socket.gethostname()
 
 
-def robot_index() -> int:
-    """mu-N is index N-1, until the robot's config carries an index."""
-    if os.environ.get("ROBOT_INDEX"):
-        return int(os.environ["ROBOT_INDEX"])
-    match = re.search(r"(\d+)$", NAME)
-    return int(match.group(1)) - 1 if match else 0
-
-
-INDEX = robot_index()
-SERVICE = f"@/{PARTITION}@/world/{WORLD}"
-# The token for our world's create service, as gz-transport mangles it.
-CREATE_TOKEN = f"/%world%{WORLD}%create/"
+# Offsets the FDM port, as SITL's -I does. One robot: 0.
+INDEX = int(os.environ.get("ROBOT_INDEX") or 0)
+# A world's create service, in its liveliness token as gz-transport mangles it.
+CREATE_TOKEN = re.compile(r"/%world%([^%/]+)%create/")
 
 
 def log(*args) -> None:
@@ -88,9 +80,10 @@ def boolean(payload: bytes) -> bool:
 # -- talking to the world -------------------------------------------------------
 
 
-def call(session: zenoh.Session, service: str, request: bytes, timeout: float = 5.0) -> bool | None:
-    """Call a gz service. None if nobody answered, which is how a failure looks."""
-    for reply in session.get(f"{SERVICE}/{service}", payload=request, timeout=timeout):
+def call(session: zenoh.Session, world: str, service: str, request: bytes, timeout: float = 5.0) -> bool | None:
+    """Call a world's gz service. None if nobody answered, which is how a failure looks."""
+    key = f"@/{PARTITION}@/world/{world}/{service}"
+    for reply in session.get(key, payload=request, timeout=timeout):
         if reply.ok is not None:
             return boolean(reply.ok.payload.to_bytes())
     return None
@@ -106,13 +99,13 @@ def model_sdf() -> str:
     )
 
 
-def spawn(session: zenoh.Session) -> bool:
-    removed = call(session, "remove/blocking", entity_model(NAME))
+def spawn(session: zenoh.Session, world: str) -> bool:
+    removed = call(session, world, "remove/blocking", entity_model(NAME))
     if removed:
         log(f"removed a leftover {NAME}")
-    created = call(session, "create/blocking", entity_factory(model_sdf(), NAME), timeout=15.0)
+    created = call(session, world, "create/blocking", entity_factory(model_sdf(), NAME), timeout=15.0)
     if created:
-        log(f"spawned {NAME} (index {INDEX}, FDM port {9002 + 10 * INDEX})")
+        log(f"spawned {NAME} into {world} (FDM port {9002 + 10 * INDEX})")
         return True
     log(f"spawning {NAME} failed:", "no reply" if created is None else "world refused it")
     return False
@@ -125,21 +118,25 @@ def main() -> None:
     conf.insert_json5("scouting/multicast/enabled", "false")
 
     world_up = threading.Event()
+    world: str | None = None
 
     def on_token(sample: zenoh.Sample) -> None:
-        if CREATE_TOKEN not in str(sample.key_expr):
+        nonlocal world
+        match = CREATE_TOKEN.search(str(sample.key_expr))
+        if not match:
             return
         if sample.kind == zenoh.SampleKind.PUT:
-            log("world is up")
+            world = match.group(1)
+            log(f"world {world} is up")
             world_up.set()
         else:
-            log("world went away")
+            log(f"world {match.group(1)} went away")
 
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
 
-    log(f"{NAME}, index {INDEX}, via {ROUTER}")
+    log(f"{NAME} via {ROUTER}")
     with zenoh.open(conf) as session:
         session.liveliness().declare_subscriber("@gz/**", on_token, history=True)
         while not stop.is_set():
@@ -148,9 +145,9 @@ def main() -> None:
             world_up.clear()
             # A failed call gets no reply, only a timeout: retry until it
             # takes, or until the world goes away and comes back.
-            while not stop.is_set() and not world_up.is_set() and not spawn(session):
+            while not stop.is_set() and not world_up.is_set() and not spawn(session, world):
                 stop.wait(5.0)
-        if call(session, "remove/blocking", entity_model(NAME), timeout=2.0):
+        if world and call(session, world, "remove/blocking", entity_model(NAME), timeout=2.0):
             log(f"removed {NAME}")
 
 

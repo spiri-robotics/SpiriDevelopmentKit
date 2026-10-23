@@ -6,6 +6,8 @@ the same URIs the same way and serves them at disk speed:
 
     GET /model/<name>/<path>   model://<name>/<path>, searched in GZ_SIM_RESOURCE_PATH
     GET /file/<absolute path>  only if it lies inside GZ_SIM_RESOURCE_PATH
+    GET /world.sdf             the world Gazebo loaded (GZ_WORLD), for whatever
+                               needs its <spherical_coordinates>, such as SITL's home
 
 Like the websocket server, nothing outside the resource paths is readable.
 """
@@ -16,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
 ROOTS = [os.path.realpath(p) for p in os.environ.get("GZ_SIM_RESOURCE_PATH", "").split(":") if p]
+WORLD = os.environ.get("GZ_WORLD", "sdk")
 
 
 def inside_roots(path):
@@ -25,6 +28,8 @@ def inside_roots(path):
 
 def resolve(url_path):
     path = unquote(urlsplit(url_path).path)
+    if path == "/world.sdf":
+        path = f"/model/{WORLD}.sdf"
     if path.startswith("/model/"):
         rel = path[len("/model/"):]
         for root in ROOTS:

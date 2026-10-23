@@ -39,7 +39,8 @@ Install and start them in this order:
 1. **zenoh-router.** Everything meets at this router, and it creates the
    `spirisynq` network the other apps join. It listens on port 7447, which is
    how real robots and other machines reach the sim.
-2. **gazebo.** The simulated world. It has no page of its own.
+2. **gazebo.** The simulated world. It has no page of its own; pick the
+   world in its settings.
 3. **debug-map.** A globe with the Gazebo world on it, and a
    tool to browse everything on zenoh. Once it's up, *Debug map* appears in
    SpiriConfig's sidebar. It isn't in Appsource-Spiri-Simulation yet, so
@@ -99,54 +100,40 @@ symlink, not your checkout.
 
 ### Robots
 
-A robot mounts your checkout as a store too, so the apps it installs from
-SpiriDevelopmentKit are your working tree. Tell it where the checkout is, in a
-`.env` next to its compose file (it's git-ignored):
-
-```console
-$ echo "SDK_SOURCE=$PWD/SpiriDevelopmentKit" > SpiriDevelopmentKit/sim-robot/.env
-```
-
-Then install `SpiriDevelopmentKit/sim-robot` as `mu-1`, and build and start it
-as above:
+Install `SpiriDevelopmentKit/sim-robot` as `mu-1`:
 
 ```console
 $ uvx spiriconfig appstore install SpiriDevelopmentKit/sim-robot --as mu-1
+```
+
+A robot mounts your checkout as a store too, so the apps it installs from
+SpiriDevelopmentKit are your working tree. Tell it where the checkout is: in
+the robot's settings, turn on advanced mode and set *SpiriDevelopmentKit
+checkout*. The same settings hold its name, its MAVLink system ID and the
+QGroundControl port. Then build and start it as above:
+
+```console
 $ cd ~/spiri-apps/mu-1
 $ docker compose -p mu-1 -f compose.yaml -f compose.dev.yaml build
 $ uvx spiriconfig docker up mu-1 --dev
 ```
 
-On its first boot the robot installs the Mu's zenoh router. It runs its own
-docker daemon and SpiriConfig, and appears in the sidebar as *mu-1*.
-
-To make it fly, it needs `ardupilot-sitl` (the flight controller) and
-`sim-agent` (which puts its airframe into the world). The robot's docker
-daemon can't see your images, so build them on the host and load them in.
-The first SITL build compiles ArduCopter and takes a few minutes.
+On its first boot the robot installs and starts its own apps from your
+checkout: the Mu's zenoh router, `sim-agent` (which puts its airframe into the
+world) and `ardupilot-sitl` (its flight controller). It builds them itself,
+and the first SITL build compiles ArduCopter, so give it a few minutes. Watch
+for `robot: first boot done` in its log:
 
 ```console
-$ cd SpiriDevelopmentKit
-$ docker build -t sdk-ardupilot-sitl:dev ardupilot-sitl/sitl
-$ docker build -t sdk-sim-agent:dev sim-agent/agent
-$ docker save sdk-ardupilot-sitl:dev sdk-sim-agent:dev | docker exec -i mu-1 docker load
-$ docker exec mu-1 sh -c 'for a in sim-agent ardupilot-sitl; do
-    spiriconfig appstore install SpiriDevelopmentKit/$a && spiriconfig docker up $a --dev
-  done'
+$ docker logs -f mu-1 2>&1 | grep robot:
 ```
 
-The robot appears in the Gazebo world as `mu-1`.
+The robot appears in the sidebar as *mu-1*, and in the Gazebo world as `mu-1`.
 
-**Connecting QGroundControl.** Each robot's SITL listens for MAVLink on TCP
-port 5760 at the robot's address. Find the address with:
-
-```console
-$ docker inspect mu-1 --format '{{(index .NetworkSettings.Networks "spirisynq").IPAddress}}'
-```
-
-In QGC, open *Application Settings → Comm Links*, add a **TCP** link to that
-address on port 5760, and connect. The address can change when the robot or
-the network is recreated.
+**Connecting QGroundControl.** In QGC, open *Application Settings → Comm
+Links*, add a **TCP** link to `localhost` port 5760, and connect. From another
+machine, use this machine's address instead. The port is in the robot's
+settings.
 
 A robot's own SpiriConfig shown inside the SDK's is still being worked out
 (see [architecture.md](architecture.md#open-questions-and-first-spike)), so

@@ -120,7 +120,9 @@ other by default, so the appliance's `zenoh-router` sets
 router as it appears. Robots carry no sim-specific zenoh config.
 
 On its first boot a robot installs and starts the apps every Mu runs, listed in
-`ROBOT_APPS` as `<store>/<app>`. Today that's only the router. After that
+`ROBOT_APPS` as `<store>/<app>`. Released, that's only the router. In
+development (`compose.dev.yaml`) it's also `sim-agent` and `ardupilot-sitl`
+from the mounted checkout, built inside the robot (`ROBOT_DEV`). After that
 they're ordinary installed apps, brought back by the inner dockerd's restart
 policy. Appsource-Spiri-Mu doesn't exist yet, so the router comes from
 Appstore-Spiri_development for now.
@@ -181,11 +183,12 @@ and it gets measured before the scenarios are built on top.
 `sim-agent` does everything needed to put its robot in a world. It has no
 counterpart on the world side.
 
-1. **Configure SITL.** Write the FDM target (world address, `9002 + 10·index`)
-   and `--home` for `ardupilot-sitl`, which starts after the agent is healthy.
-   `--home` is the world origin for every robot, and robots get distinct GPS
-   fixes from their spawn positions. If any robot's home is wrong, its GPS is
-   quietly wrong too.
+1. **Find the world.** Any world: the agent spawns into whichever world's
+   `create` token appears, so it needs no world setting. SITL needs no
+   coordination with it either. `ardupilot-sitl` reads its `--home` from the
+   world itself (`gazebo-assets` serves the loaded world at `/world.sdf`), so
+   home and the world's `<spherical_coordinates>` can't disagree, and a
+   robot's GPS fix follows from its spawn position.
 2. **Announce.** Declare a liveliness token and publish a SpiriSynq object with
    the robot's model reference, content hash, and spawn pose. **(proposed)** The
    token goes at `sim/robots/<name>` and the object is `SimRobot` on the same
@@ -194,17 +197,23 @@ counterpart on the world side.
    which ship in its own image. A model therefore travels with the robot and is
    versioned with its firmware and parameters. **(proposed)** The queryable is
    `sim/robots/<name>/model`, returning a tarball.
-4. **Spawn.** Call the world's `create` service over zenoh, with the model
-   rendered from a template: name, FDM port, camera stream target. It's
-   idempotent: `remove` its own name first, then `create`.
+4. **Spawn.** Call the world's `create/blocking` service over zenoh, with the
+   model rendered from a template: name, pose, FDM port (camera stream target
+   later). It's idempotent: `remove` its own name first, then `create`. The
+   messages are hand-encoded protobuf, so the agent needs neither Gazebo nor
+   protobuf libraries.
 5. **Re-spawn.** Watch Gazebo's liveliness token for `/world/<name>/create`.
    When the world restarts and the token comes back, spawn again.
 
-**Known gap:** a robot that crashes and never comes back leaves its model in the
-world. Cleanup is an optional sweep, "models with no matching robot liveliness →
-`remove`". It's a plain zenoh client, so it works against any world and can be a
-button in the SDK SpiriConfig. If a leftover model stalls lockstep, this has to
-become automatic. That's untested; see the spike list.
+**Known gap: a leftover model freezes the world.** In lock-step, once the
+ArduPilotPlugin has heard from a SITL it waits for that SITL's next packet
+before every physics step, with no timeout. If SITL stops while its model is
+in the world, the world stops: physics, sensors and every `blocking` service,
+including the `remove` that would clean the model up. A restarted SITL
+resumes it (SITL starts without waiting for a GCS for this reason), but a
+robot that goes away for good leaves the world frozen. The fix has to come
+from outside lock-step: remove the model through a path that doesn't need the
+world to step, or patch the plugin to time out.
 
 ### Cameras
 
@@ -465,7 +474,8 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
       Gazebo's websocket sends meshes at ~245 KB/s, so the viewer fetches them
       over HTTP instead
       (`gazebo/gz/asset_server.py`).
-- [ ] A leftover ArduPilot model with no SITL attached doesn't stall lockstep.
+- [x] A leftover ArduPilot model with no SITL attached doesn't stall lockstep.
+      **It does**, and freezes the whole world; see sim-agent's known gap.
 - [ ] Two robots, then five, in lockstep: real-time factor, and GPS correct with
       a shared `--home`.
 - [x] Zenoh multicast scouting between robots on the docker bridge. Peers
@@ -473,8 +483,9 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
       host-mode router.
 - [ ] A robot's SpiriConfig works nested inside the SDK SpiriConfig under
       `/plugin/mu-1/`: URLs, cookies, auth.
-- [ ] Whether `--home` and the FDM index stay config, or can be read from the
-      world.
+- [x] Whether `--home` and the FDM index stay config, or can be read from the
+      world. Home is read from the world. The index is 0 while there is one
+      robot.
 - [ ] What position/state the Mu publishes on SpiriSynq today, and whether it
       is enough for the map.
 - [ ] CTB produces correct quantized-mesh terrain from Copernicus GLO-30 for

@@ -51,18 +51,31 @@ fi
 
 # First boot: install and start the apps every Mu runs. After that they're
 # ordinary installed apps, and dockerd's restart policy brings them back. A
-# robot that can't reach its stores still boots, just without them.
+# robot that can't reach its stores still boots, just without them. In the
+# background, since building an app (ROBOT_DEV) can take minutes, and the
+# robot's SpiriConfig shouldn't wait for it.
 missing=
 for app in ${ROBOT_APPS:-}; do
 	[ -e "$SPIRICONFIG_DOCKER_COMPOSE_DIR/${app##*/}" ] || missing="$missing $app"
 done
 if [ -n "$missing" ]; then
-	spiriconfig appstore check || echo >&2 "robot: could not fetch app stores"
-	for app in $missing; do
-		if ! { spiriconfig appstore install "$app" && spiriconfig docker up "${app##*/}"; }; then
-			echo >&2 "robot: could not install $app"
-		fi
-	done
+	(
+		# Clone the stores we haven't got. Not `appstore check`, which also
+		# fetches the ones we have and stops at the first that fails, as a
+		# read-only development checkout does.
+		for url in $(echo "$SPIRICONFIG_APPSTORE_STORES" | tr -d '[]" ' | tr ',' ' '); do
+			slug=$(basename "$url" .git)
+			[ -e "$SPIRICONFIG_APPSTORE_STORE_DIR/$slug" ] ||
+				spiriconfig appstore add "$url" || echo >&2 "robot: could not clone $url"
+		done
+		for app in $missing; do
+			if ! { spiriconfig appstore install "$app" &&
+				spiriconfig docker up "${app##*/}" ${ROBOT_DEV:+--dev}; }; then
+				echo >&2 "robot: could not install $app"
+			fi
+		done
+		echo >&2 "robot: first boot done"
+	) &
 fi
 
 spiriconfig serve &
