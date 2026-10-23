@@ -3,14 +3,24 @@
 # and spawns it again whenever the world restarts. Nothing on the world side
 # knows about it; see docs/architecture.md.
 #
-# Runs in the robot's own network namespace, so its hostname is the robot's
-# name, and it talks to zenoh through the robot's own router.
+# On the robot's own `spirisynq` network, a client of the robot's inner
+# router, like every other zenoh app on a Mu: only the external half of the
+# zenoh-router app may be on the host network. Install zenoh-router first.
 services:
   agent:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-agent:edge
     restart: unless-stopped
-    network_mode: host
+    networks:
+      - spirisynq
     environment:
-      # The robot's, from the environment of its SpiriConfig: whether its
-      # airframe carries a gimbal camera.
+      ZENOH_CONNECT: tcp/zenoh-router:7447
+      # The robot's, from the environment of its SpiriConfig: its name, which
+      # the model is named after, and whether its airframe carries a gimbal
+      # camera.
+      ROBOT_NAME: ${ROBOT_NAME:-mu-1}
       ROBOT_GIMBAL: ${ROBOT_GIMBAL:-false}
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

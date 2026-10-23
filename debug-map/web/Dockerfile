@@ -17,7 +17,7 @@ RUN npm run build
 # (they must match) and as the SDK router.
 FROM alpine:3.22 AS zenoh
 ARG TARGETARCH
-ARG ZENOH_TS=1.8.0
+ARG ZENOH_TS=1.10.1
 RUN arch=$([ "$TARGETARCH" = arm64 ] && echo aarch64 || echo x86_64) \
  && wget -qO z.zip "https://github.com/eclipse-zenoh/zenoh-ts/releases/download/${ZENOH_TS}/zenoh-ts-${ZENOH_TS}-${arch}-unknown-linux-musl-standalone.zip" \
  && unzip z.zip zenoh-bridge-remote-api \

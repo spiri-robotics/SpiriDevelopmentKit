@@ -122,6 +122,9 @@ other by default, so the appliance's `zenoh-router` sets
 `scouting/multicast/autoconnect` to include routers and joins each robot's
 router as it appears. Robots carry no sim-specific zenoh config.
 
+Every zenoh app inside a robot stays on the robot's `spirisynq` network, as
+on a Mu: only `zenoh-router-host` is in the robot's network namespace.
+
 On its first boot a robot installs and starts the apps every Mu runs, listed in
 `ROBOT_APPS` as `<store>/<app>`. Released, that's only the router. In
 development (`compose.dev.yaml`) it's also `sim-agent`, `ardupilot-sitl` and
@@ -390,7 +393,7 @@ would run with full trust in the page.
 (`web/zenoh.js`). It wraps zenoh-ts, which talks over a websocket (Caddy's
 `/zenoh`) to `zenoh-ws`, a zenoh-ts remote-api bridge that runs from the
 `debug-map` image and connects to the router as a client. The bridge, the
-zenoh-ts package and the router are all on 1.8.0, and the bridge and the
+zenoh-ts package and the router are all on 1.10.1, and the bridge and the
 package must match. The session opens when an applet first needs it,
 reconnects by itself, and declares its subscriptions again afterwards. The
 bridge doesn't restrict anything. Anyone who can load the page can read and
