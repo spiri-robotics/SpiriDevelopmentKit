@@ -129,13 +129,14 @@ $ uvx spiriconfig docker up mu-1 --dev
 ```
 
 The robot is a computer of its own: a docker daemon and a SpiriConfig, like a
-real Mu's. On its first boot it installs six apps into itself, and builds
-five of them, which takes a few minutes:
+real Mu's. On its first boot it installs seven apps into itself, and builds
+six of them, which takes a few minutes:
 
 | App inside the robot | What it does | On a real Mu |
 | --- | --- | --- |
 | `zenoh-router` | The Mu's own router, joined to the world's | the same app |
 | `sim-agent` | Puts the robot's airframe into the world, and back after the world restarts | nothing: a real Mu has a body |
+| `mavlink-router` | The robot's MAVLink endpoint, tcp 5760: QGroundControl and the robot's own apps connect to the flight controller through it at once | the same app |
 | `ardupilot-sitl` | The flight controller: ArduCopter SITL, flying the airframe in Gazebo | the flight controller board |
 | `sim-camera-ingress` | The gimbal camera's picture, on SpiriSynq. Idle without *Gimbal camera* | `camera-ingress`, from the real camera |
 | `cloud-link` | Links the robot to a Spiri Cloud organization, from its *Spiri Cloud* page, and serves its camera to the organization's Frigate | the same app |
@@ -155,7 +156,9 @@ sidebar as *mu-1*.
 
 In QGroundControl, open *Application Settings → Comm Links*, add a link of
 type **TCP** to host `localhost`, port **5760**, and connect. From another
-machine, use this machine's address.
+machine, use this machine's address. That's the robot's mavlink-router, so
+QGroundControl shares the flight controller with the robot's own apps, such as
+SpiriMav, which connect to `tcp:127.0.0.1:5760` inside the robot.
 
 The robot shows up as system ID 1 with a GPS fix, at the world's location.
 Arm and take off as with any ArduCopter.
@@ -175,7 +178,15 @@ $ docker exec mu-1 sh -c 'cd /srv/compose/ardupilot-sitl &&
 with Up (dev): its apps read them from the robot's environment, which is set
 when its container is created. A robot from before `sim-camera-ingress`
 existed won't install it by itself; install it inside the robot like the
-others, or start the robot from scratch (below).
+others, or start the robot from scratch (below). The same goes for
+`mavlink-router`. Install it after rebuilding `ardupilot-sitl`: until then the
+old SITL holds port 5760, and the router runs without its TCP server until it
+restarts.
+
+```console
+$ docker exec mu-1 sh -c 'spiriconfig appstore install SpiriDevelopmentKit/mavlink-router &&
+    spiriconfig docker up mavlink-router --dev'
+```
 
 **After changing the world, or restarting Gazebo**, restart the robot.
 `sim-agent` puts the airframe back by itself, but SITL looks up the world's

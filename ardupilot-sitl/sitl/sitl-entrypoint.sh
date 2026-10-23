@@ -5,10 +5,14 @@
 # robot (ROBOT_SYSID), and the GPS home from the world itself, so the two
 # can't disagree. ROBOT_INDEX sets SITL's -I, which offsets every port: the
 # world's FDM port is 9002 + 10 * index, matching the model sim-agent spawns.
+#
+# MAVLink goes to the robot's mavlink-router, the way a real Mu's FC talks to
+# it over a UART, and everything else connects to the router.
 set -eu
 
 : "${ROBOT_INDEX:=0}"
 : "${ROBOT_SYSID:=1}"
+: "${MAVLINK_ROUTER:=127.0.0.1:14560}"
 world_host=${SIM_HOST:-gazebo}
 world_sdf=${WORLD_SDF_URL:-http://gazebo-assets:9003/world.sdf}
 
@@ -43,11 +47,12 @@ case "$(echo "${ROBOT_GIMBAL:-}" | tr '[:upper:]' '[:lower:]')" in
 esac
 
 echo "sitl: $(hostname) sysid $ROBOT_SYSID, home $SITL_HOME," \
-	"world $sim:$((9002 + 10 * ROBOT_INDEX)), MAVLink on tcp:$((5760 + 10 * ROBOT_INDEX))"
-# --serial0 without :wait: by default SITL doesn't start until a GCS connects,
-# and in lock-step the world waits on SITL, so nothing would move until then.
+	"world $sim:$((9002 + 10 * ROBOT_INDEX)), MAVLink to udp:$MAVLINK_ROUTER"
+# udpclient: SITL sends whether or not anyone listens. A TCP serial0 would
+# take one client at a time, and with :wait SITL wouldn't start until it
+# connected, which in lock-step stops the world too.
 exec arducopter --model JSON --sim-address="$sim" -I "$ROBOT_INDEX" \
-	--speedup 1 --slave 0 --serial0 tcp:0 \
+	--speedup 1 --slave 0 --serial0 "udpclient:$MAVLINK_ROUTER" \
 	--home "$SITL_HOME" \
 	--defaults "$defaults,identity.parm" \
 	"$@"

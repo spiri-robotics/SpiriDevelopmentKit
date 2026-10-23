@@ -1,11 +1,13 @@
 # ardupilot-sitl: the flight controller of a simulated Mu, installed inside a
 # sim-robot. Stands in for the FC board; everything that talks MAVLink to it
 # talks to it the same way. Install sim-agent too, which puts the robot's
-# airframe into the world for SITL to fly.
+# airframe into the world for SITL to fly, and mavlink-router, which is how
+# anything reaches its MAVLink.
 #
 # Runs in the robot's own network namespace, which sits on the appliance
-# network: it reaches the world by name, and QGroundControl reaches it at the
-# robot's address on tcp 5760, which sim-robot publishes.
+# network: it reaches the world by name, and sends MAVLink to mavlink-router
+# on udp 127.0.0.1:14560, as a real FC does over its UART. QGroundControl
+# connects to the router.
 services:
   sitl:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/ardupilot-sitl:edge

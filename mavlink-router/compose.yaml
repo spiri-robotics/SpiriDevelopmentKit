@@ -1,0 +1,14 @@
+# mavlink-router: the robot's one MAVLink endpoint, installed inside a
+# sim-robot. The flight controller takes a single link, and this shares it, so
+# QGroundControl and the robot's own apps, such as SpiriMav, are connected at
+# once. It's the same app a real Mu runs, with its UART swapped for the UDP
+# port ardupilot-sitl sends to; here until there's an Appsource-Spiri-Mu for it.
+#
+# Runs in the robot's own network namespace. Apps inside the robot connect to
+# tcp 127.0.0.1:5760; QGroundControl reaches the same port at the robot's
+# address, which sim-robot publishes.
+services:
+  router:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/mavlink-router:edge
+    restart: unless-stopped
+    network_mode: host

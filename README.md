@@ -16,6 +16,7 @@ to run them from source. Released versions install from
 | [`offline-map`](offline-map/) | Map tiles over zenoh from downloaded regions, for maps offline. |
 | [`sim-robot`](sim-robot/) | A simulated Mu: its own docker daemon and SpiriConfig. |
 | [`ardupilot-sitl`](ardupilot-sitl/) | Inside a robot: its flight controller, ArduCopter SITL. |
+| [`mavlink-router`](mavlink-router/) | Inside a robot: its MAVLink endpoint, sharing the flight controller between QGroundControl and the robot's apps. Not simulated; here until Appsource-Spiri-Mu exists. |
 | [`sim-agent`](sim-agent/) | Inside a robot: puts its airframe into the world. |
 | [`sim-camera-ingress`](sim-camera-ingress/) | Inside a robot: its gimbal camera, published on SpiriSynq. |
 | [`cloud-link`](cloud-link/) | Inside a robot: links it to a Spiri Cloud organization, fetches its configuration, and serves its camera to the cloud's Frigate. Not simulated; here until Appsource-Spiri-Mu exists. |

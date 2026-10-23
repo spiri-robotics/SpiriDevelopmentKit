@@ -13,6 +13,7 @@ services:
       ROBOT_APPS: >-
         Appstore-Spiri_development/zenoh-router
         SpiriDevelopmentKit/sim-agent
+        SpiriDevelopmentKit/mavlink-router
         SpiriDevelopmentKit/ardupilot-sitl
         SpiriDevelopmentKit/sim-camera-ingress
         SpiriDevelopmentKit/cloud-link

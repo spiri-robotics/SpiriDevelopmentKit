@@ -39,6 +39,8 @@ jobs:
             context: sim-robot/robot
           - name: ardupilot-sitl
             context: ardupilot-sitl/sitl
+          - name: mavlink-router
+            context: mavlink-router/router
           - name: sim-agent
             context: sim-agent/agent
           - name: sim-camera-ingress

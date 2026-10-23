@@ -94,7 +94,7 @@ differ:
 
 | Sim app | Does | On a real Mu, replaced by |
 | --- | --- | --- |
-| `ardupilot-sitl` | ArduPilot SITL, the flight controller | the FC board, over serial |
+| `ardupilot-sitl` | ArduPilot SITL, the flight controller, sending MAVLink to mavlink-router over UDP | the FC board, over serial |
 | `sim-camera-ingress` | Video from the Gazebo gimbal camera (see [Cameras](#cameras)) | `camera-ingress` from the real camera |
 | `sim-agent` | Joins the robot to the simulated world (below) | nothing |
 | `sim-link` (optional) | netem on the robot's link: a simulated radio | the real radio |
@@ -126,11 +126,12 @@ Every zenoh app inside a robot stays on the robot's `spirisynq` network, as
 on a Mu: only `zenoh-router-host` is in the robot's network namespace.
 
 On its first boot a robot installs and starts the apps every Mu runs, listed in
-`ROBOT_APPS` as `<store>/<app>`. Released, that's only the router. In
-development (`compose.dev.yaml`) it's also `sim-agent`, `ardupilot-sitl` and
-`sim-camera-ingress` from the mounted checkout, built inside the robot (`ROBOT_DEV`). After that
+`ROBOT_APPS` as `<store>/<app>`. Released, that's only the zenoh router. In
+development (`compose.dev.yaml`) it's also `sim-agent`, `mavlink-router`,
+`ardupilot-sitl`, `sim-camera-ingress`, `cloud-link` and `netbird` from the
+mounted checkout, built inside the robot (`ROBOT_DEV`). After that
 they're ordinary installed apps, brought back by the inner dockerd's restart
-policy. Appsource-Spiri-Mu doesn't exist yet, so the router comes from
+policy. Appsource-Spiri-Mu doesn't exist yet, so the zenoh router comes from
 Appstore-Spiri_development for now.
 
 A sim robot installs from two appsources. The real **Appsource-Spiri-Mu**
@@ -547,7 +548,11 @@ Anything that has to cross machines goes through **zenoh routing**.
 - Only a few ports are published to the LAN: the SDK SpiriConfig UI, and the
   zenoh router (`7447`), which real robots and developer machines connect
   through. MAVLink for QGroundControl is a third. Today the one robot
-  publishes its SITL's TCP 5760 directly. **(proposed)** With more robots, a
+  publishes its mavlink-router's TCP 5760. The router is the robot's one
+  MAVLink endpoint: SITL's serial0 is a UDP link to it, standing in for a
+  Mu's FC UART, and QGroundControl and the robot's own apps (SpiriMav, on
+  `tcp:127.0.0.1:5760`) are each a TCP client of it, connected at once.
+  **(proposed)** With more robots, a
   mavlink-router on the appliance fans every sim robot into one endpoint,
   each robot with its own system ID. That's how the behaviour team's QGC
   plugin flies the swarm.
@@ -613,6 +618,7 @@ image they pin is loaded into its registry.
 gazebo/               gz/ (world image), served by gazebo and gazebo-assets
 debug-map/            web/ (MapLibre map and zenoh-ws), index/ (zenoh-index)
 ardupilot-sitl/       sitl/ (ArduCopter SITL image), installed inside a robot
+mavlink-router/       router/ (mavlink-router and its config), installed inside a robot
 sim-agent/            agent/ (spawns the robot's airframe), installed inside a robot
 sim-camera-ingress/   ingress/ (SpiriCamera + gz:// source), installed inside a robot
 sim-robot/            robot/ (docker-in-docker + SpiriConfig image)

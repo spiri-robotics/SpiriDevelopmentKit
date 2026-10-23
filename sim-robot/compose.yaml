@@ -72,7 +72,7 @@ services:
     networks:
       - spirisynq
     ports:
-      # MAVLink from the robot's flight controller (ardupilot-sitl), for
+      # The robot's MAVLink (mavlink-router, in front of ardupilot-sitl), for
       # QGroundControl: connect to tcp <this machine>:5760.
       - "${MAVLINK_PORT:-5760}:5760"
     labels:
