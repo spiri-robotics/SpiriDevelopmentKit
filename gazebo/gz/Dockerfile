@@ -53,5 +53,7 @@ COPY models /models
 COPY worlds /worlds
 # Run as a second service from this image; see asset_server.py.
 COPY asset_server.py /usr/local/bin/gz-asset-server
+# Restarts Gazebo after the router restarts; see gz-watchdog.py.
+COPY gz-watchdog.py /usr/local/bin/gz-watchdog
 # Headless rendering (EGL) so camera sensors work without a display.
-CMD ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/citadel-hill.sdf"]
+CMD ["gz-watchdog", "gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/citadel-hill.sdf"]

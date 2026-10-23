@@ -20,7 +20,9 @@ services:
   gazebo:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:edge
     restart: unless-stopped
-    command: ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/${GZ_WORLD:-citadel-hill}.sdf"]
+    # gz-watchdog stops Gazebo when its link to the router drops, for the
+    # restart policy to bring back; see gz/gz-watchdog.py.
+    command: ["gz-watchdog", "gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/${GZ_WORLD:-citadel-hill}.sdf"]
     # Render cameras on the host's GPU. In software, every camera frame
     # stalls the lock-stepped sim (real-time factor ~0.1). A bind mount, not
     # `devices:`, so a host without /dev/dri still starts, in software.
