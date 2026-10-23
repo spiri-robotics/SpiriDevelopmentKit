@@ -18,6 +18,8 @@ import { parse } from "yaml";
 const DISCOVER_MS = 10000;
 const TILE_TIMEOUT_MS = 10000;
 const FLAVOR = "light";
+const DEFAULT_HEIGHT = 6; // m, for buildings without one
+const MAX_HEIGHT = 600; // m; the CN Tower is 553
 
 // zenoh://<key>: a tile, font or sprite, by zenoh query. No reply is a
 // missing tile, which MapLibre takes as a 404: it draws the parent tile
@@ -75,8 +77,15 @@ function styleFor(source, o, prefix) {
             minzoom: 14,
             paint: {
               "fill-extrusion-color": "#c8c4bc",
-              // Most buildings in OSM have no height.
-              "fill-extrusion-height": ["coalesce", ["get", "height"], 6],
+              // Most buildings in OSM have no height, and some have nonsense:
+              // Dalhousie's Goldberg building is 3,704 m, from levels
+              // "0,1,2,3,4" read as 1234. Over MAX_HEIGHT is unknown.
+              "fill-extrusion-height": [
+                "let",
+                "h",
+                ["coalesce", ["get", "height"], DEFAULT_HEIGHT],
+                ["case", [">", ["var", "h"], MAX_HEIGHT], DEFAULT_HEIGHT, ["var", "h"]],
+              ],
               "fill-extrusion-base": ["coalesce", ["get", "min_height"], 0],
               "fill-extrusion-opacity": 0.9,
             },
