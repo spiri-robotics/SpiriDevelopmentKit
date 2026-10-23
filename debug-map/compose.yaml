@@ -1,4 +1,4 @@
-# debug-map: a Cesium globe in SpiriConfig for looking at the simulation and
+# debug-map: a MapLibre map in SpiriConfig for looking at the simulation and
 # everything on zenoh. A stand-in for the operator's view, not the final one. Every tool on it is
 # an applet; see docs/architecture.md. Install zenoh-router first.
 #

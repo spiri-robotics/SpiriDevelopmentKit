@@ -10,3 +10,7 @@ services:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-agent:edge
     restart: unless-stopped
     network_mode: host
+    environment:
+      # The robot's, from the environment of its SpiriConfig: whether its
+      # airframe carries a gimbal camera.
+      ROBOT_GIMBAL: ${ROBOT_GIMBAL:-false}

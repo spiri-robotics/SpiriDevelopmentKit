@@ -2,7 +2,7 @@ FROM node:24-slim AS build
 WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund
-COPY index.html main.js gz-overlay.js shell.js shell.css zenoh.js path-tree.js path-tree.css synq.js synq-schema.js synq-schema.css vite.config.js ./
+COPY index.html main.js gz-world.js gz-services.js shell.js shell.css zenoh.js path-tree.js path-tree.css synq.js synq-schema.js synq-schema.css vite.config.js ./
 COPY applets ./applets
 RUN npm run build
 

@@ -1,4 +1,3 @@
-import { Entity, ScreenSpaceEventHandler, ScreenSpaceEventType } from "cesium";
 import "./shell.css";
 
 // The map's shell. The globe fills the stage; every tool is an applet, one file
@@ -20,7 +19,11 @@ import "./shell.css";
 // Closed windows are unmounted, so they cost nothing. Most one-off tools should
 // be actions rather than windows: ctx.actions.register adds an entry to an
 // entity's right-click menu and the Inspector, so the tool takes no screen space
-// until someone points at the thing it's for.
+// until someone points at the thing it's for. An applet with only setup (actions,
+// say) isn't listed in the sidebar.
+//
+// ctx.notify(text, ms) shows a line of text over the map for ms (0: until the
+// function it returns is called), for what an action did or is waiting for.
 
 // JSON in localStorage, which can be missing or throw (private windows etc.).
 function storage(key) {
@@ -65,6 +68,49 @@ export class Layers extends EventTarget {
   }
 }
 
+// Things on the map that can be picked and acted on: { id, name, kind }, plus
+// whatever their layer adds. One can be selected and one followed. Fires
+// "change" when one is added or removed, "select" and "track" when those
+// change. An element on the map stands for an entity by carrying its id in
+// data-entity; the shell picks it from there (see startShell).
+export class Entities extends EventTarget {
+  #items = new Map();
+  selected = null;
+  tracked = null;
+
+  add(entity) {
+    this.#items.set(entity.id, entity);
+    this.dispatchEvent(new Event("change"));
+    return entity;
+  }
+
+  remove(entity) {
+    if (!this.#items.delete(entity.id)) return;
+    if (this.selected === entity) this.select(null);
+    if (this.tracked === entity) this.track(null);
+    this.dispatchEvent(new Event("change"));
+  }
+
+  get(id) {
+    return this.#items.get(id);
+  }
+
+  get values() {
+    return [...this.#items.values()];
+  }
+
+  select(entity) {
+    this.selected = entity;
+    this.dispatchEvent(new Event("select"));
+  }
+
+  track(entity) {
+    if (this.tracked === entity) return;
+    this.tracked = entity;
+    this.dispatchEvent(new Event("track"));
+  }
+}
+
 // Things you can do to an entity: { label, when(entity), run(entity) }.
 export class Actions {
   #list = [];
@@ -92,7 +138,7 @@ function matches(a, words) {
   return words.every((w) => hay.includes(w));
 }
 
-export function startShell(viewer, ctx) {
+export function startShell(ctx) {
   const stage = document.getElementById("stage");
   const list = document.getElementById("applets");
   const search = document.getElementById("search");
@@ -104,8 +150,9 @@ export function startShell(viewer, ctx) {
   const save = () => state.set(saved);
 
   const modules = import.meta.glob("./applets/*.js", { eager: true });
-  const applets = Object.entries(modules)
-    .map(([path, m]) => ({ id: path.match(/([^/]+)\.js$/)[1], group: "Other", ...m.default }))
+  const all = Object.entries(modules).map(([path, m]) => ({ id: path.match(/([^/]+)\.js$/)[1], group: "Other", ...m.default }));
+  const applets = all
+    .filter((a) => a.mount || a.run)
     .sort(
       (a, b) =>
         a.group.localeCompare(b.group) || (a.order ?? 50) - (b.order ?? 50) || a.title.localeCompare(b.title),
@@ -189,6 +236,16 @@ export function startShell(viewer, ctx) {
     }
   });
 
+  const notices = el("div", "notices");
+  stage.append(notices);
+  ctx.notify = (text, ms = 4000) => {
+    const notice = el("div", "", text);
+    notices.append(notice);
+    const dismiss = () => notice.remove();
+    if (ms) setTimeout(dismiss, ms);
+    return dismiss;
+  };
+
   // Windows.
   const open = new Map();
   let top = 10;
@@ -253,11 +310,12 @@ export function startShell(viewer, ctx) {
     save();
   }
 
-  for (const a of applets) {
+  for (const a of all) {
     // Each applet gets the shared context plus its own storage.
     a.ctx = Object.assign(Object.create(ctx), { store: storage(`applet:${a.id}`) });
     a.setup?.(a.ctx);
-
+  }
+  for (const a of applets) {
     a.entry = el("a");
     a.entry.dataset.open = false;
     const ico = el("span", "ico", a.icon ?? a.title[0].toUpperCase());
@@ -273,19 +331,25 @@ export function startShell(viewer, ctx) {
   render();
   for (const a of applets) if (a.mount && saved.open[a.id]) show(a);
 
-  // Right-click an entity for its actions.
+  // Click an entity to select it; right-click it for its actions.
   const menu = el("div", "menu");
   menu.hidden = true;
   stage.append(menu);
   const hideMenu = () => (menu.hidden = true);
-  viewer.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   document.addEventListener("pointerdown", (e) => menu.contains(e.target) || hideMenu());
   document.addEventListener("keydown", (e) => e.key === "Escape" && hideMenu());
 
-  const input = new ScreenSpaceEventHandler(viewer.scene.canvas);
-  input.setInputAction(({ position }) => {
-    const entity = viewer.scene.pick(position)?.id;
-    const actions = entity instanceof Entity ? ctx.actions.for(entity) : [];
+  const entityAt = (e) => ctx.entities.get(e.target.closest?.("[data-entity]")?.dataset.entity);
+  stage.addEventListener("click", (e) => {
+    const entity = entityAt(e);
+    if (entity) ctx.entities.select(entity);
+  });
+  stage.addEventListener("contextmenu", (e) => {
+    // On the map only; applet windows keep the browser's menu.
+    if (!e.target.closest("#map")) return;
+    e.preventDefault();
+    const entity = entityAt(e);
+    const actions = entity ? ctx.actions.for(entity) : [];
     if (!actions.length) return hideMenu();
     menu.replaceChildren(
       el("div", "title", entity.name ?? entity.id),
@@ -298,8 +362,9 @@ export function startShell(viewer, ctx) {
         return b;
       }),
     );
-    menu.style.left = `${position.x}px`;
-    menu.style.top = `${position.y}px`;
+    const at = stage.getBoundingClientRect();
+    menu.style.left = `${e.clientX - at.left}px`;
+    menu.style.top = `${e.clientY - at.top}px`;
     menu.hidden = false;
-  }, ScreenSpaceEventType.RIGHT_CLICK);
+  });
 }

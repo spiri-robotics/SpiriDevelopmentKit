@@ -9,6 +9,13 @@ us, and create it again.
 
 The model is rendered from iris.sdf: named after the robot, with its
 ArduPilotPlugin listening on 9002 + 10 * index, where this robot's SITL sends.
+With ROBOT_GIMBAL it carries a 3-axis gimbal, driven by SITL's mount outputs,
+and a camera publishing on /model/<name>/gimbal/image.
+
+    @sdk/sim-agent/<name>/respawn   remove the model and spawn it again, at
+                                    its spawn pose and at rest. debug-map's
+                                    Reset. SITL carries on as it was: armed
+                                    and throttled up, it takes off again.
 """
 
 import os
@@ -30,6 +37,14 @@ NAME = os.environ.get("ROBOT_NAME") or socket.gethostname()
 
 # Offsets the FDM port, as SITL's -I does. One robot: 0.
 INDEX = int(os.environ.get("ROBOT_INDEX") or 0)
+# A gimbal camera under the airframe; the robot's setting, as SpiriConfig
+# writes a switch. ardupilot-sitl reads the same variable for its mount.
+GIMBAL = os.environ.get("ROBOT_GIMBAL", "").strip().lower() in {"true", "1", "yes", "on"}
+CAMERA = {
+    "camera_width": int(os.environ.get("CAMERA_WIDTH") or 640),
+    "camera_height": int(os.environ.get("CAMERA_HEIGHT") or 480),
+    "camera_rate": float(os.environ.get("CAMERA_RATE") or 10),
+}
 # A world's create service, in its liveliness token as gz-transport mangles it.
 CREATE_TOKEN = re.compile(r"/%world%([^%/]+)%create/")
 
@@ -89,13 +104,19 @@ def call(session: zenoh.Session, world: str, service: str, request: bytes, timeo
     return None
 
 
+def render(file: str, **values) -> str:
+    return string.Template((Path(__file__).parent / file).read_text()).substitute(values)
+
+
 def model_sdf() -> str:
-    template = string.Template((Path(__file__).parent / "iris.sdf").read_text())
-    return template.substitute(
+    return render(
+        "iris.sdf",
         name=NAME,
         fdm_port=9002 + 10 * INDEX,
         # Side by side along y, 2 m apart, so robots don't spawn inside each other.
         pose=f"0 {2 * INDEX} 0.2 0 0 0",
+        gimbal=render("gimbal.sdf", name=NAME, **CAMERA) if GIMBAL else "",
+        gimbal_controls=render("gimbal-controls.sdf", name=NAME) if GIMBAL else "",
     )
 
 
@@ -111,6 +132,10 @@ def spawn(session: zenoh.Session, world: str) -> bool:
     return False
 
 
+def respawn_key() -> str:
+    return f"@sdk/sim-agent/{NAME}/respawn"
+
+
 def main() -> None:
     conf = zenoh.Config()
     conf.insert_json5("mode", '"client"')
@@ -119,6 +144,8 @@ def main() -> None:
 
     world_up = threading.Event()
     world: str | None = None
+    # Respawns from a query and from the world (re)appearing don't interleave.
+    spawning = threading.Lock()
 
     def on_token(sample: zenoh.Sample) -> None:
         nonlocal world
@@ -136,16 +163,34 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
 
-    log(f"{NAME} via {ROUTER}")
+    def respawn(session: zenoh.Session, query: zenoh.Query) -> None:
+        if world is None:
+            return query.reply_err("no world is up")
+        with spawning:
+            ok = spawn(session, world)
+        if ok:
+            query.reply(query.key_expr, f"respawned {NAME} in {world}")
+        else:
+            query.reply_err(f"respawning {NAME} in {world} failed; see sim-agent's log")
+
+    def try_spawn(session: zenoh.Session) -> bool:
+        with spawning:
+            return spawn(session, world)
+
+    log(f"{NAME} via {ROUTER}" + (", with a gimbal camera" if GIMBAL else ""))
     with zenoh.open(conf) as session:
         session.liveliness().declare_subscriber("@gz/**", on_token, history=True)
+        # Spawning blocks on the world's replies, so not in zenoh's callback.
+        session.declare_queryable(
+            respawn_key(), lambda q: threading.Thread(target=respawn, args=(session, q), daemon=True).start()
+        )
         while not stop.is_set():
             if not world_up.wait(timeout=1.0):
                 continue
             world_up.clear()
             # A failed call gets no reply, only a timeout: retry until it
             # takes, or until the world goes away and comes back.
-            while not stop.is_set() and not world_up.is_set() and not spawn(session, world):
+            while not stop.is_set() and not world_up.is_set() and not try_spawn(session):
                 stop.wait(5.0)
         if world and call(session, world, "remove/blocking", entity_model(NAME), timeout=2.0):
             log(f"removed {NAME}")

@@ -1,10 +1,10 @@
 <?xml version="1.0" ?>
 <!--
-  The default SDK world: flat ground, nothing else. Robots are not in here --
-  each one's sim-agent spawns itself through /world/sdk/create.
+  Flat ground at Yarmouth Airport (CYQI), Nova Scotia. The map's satellite
+  layer shows the runways; Gazebo has no airport geometry.
 -->
 <sdf version="1.9">
-  <world name="sdk">
+  <world name="yarmouth-airport">
     <!-- 1 kHz: ArduPilot SITL lock-steps against this. -->
     <physics name="1ms" type="ignore">
       <max_step_size>0.001</max_step_size>
@@ -12,7 +12,7 @@
     </physics>
 
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
-    <!-- Provides /world/sdk/create and /world/sdk/remove. -->
+    <!-- Provides /world/<name>/create and /world/<name>/remove. -->
     <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
     <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
@@ -27,13 +27,14 @@
       <max_connections>-1</max_connections>
     </plugin>
 
-    <!-- Every robot's SITL uses this as --home; see docs/architecture.md. -->
+    <!-- Every robot's SITL uses this as --home; see docs/architecture.md.
+         The map ignores elevation and heading. -->
     <spherical_coordinates>
       <surface_model>EARTH_WGS84</surface_model>
       <world_frame_orientation>ENU</world_frame_orientation>
-      <latitude_deg>44.6488</latitude_deg>
-      <longitude_deg>-63.5752</longitude_deg>
-      <elevation>0</elevation>
+      <latitude_deg>43.8272</latitude_deg>
+      <longitude_deg>-66.0878</longitude_deg>
+      <elevation>43</elevation>
       <heading_deg>0</heading_deg>
     </spherical_coordinates>
 

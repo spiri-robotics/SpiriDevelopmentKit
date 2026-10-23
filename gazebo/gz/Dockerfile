@@ -36,20 +36,22 @@ RUN cmake -S /src/ardupilot_gazebo -B /build -DCMAKE_BUILD_TYPE=RelWithDebInfo -
 
 FROM gazebo
 
+# assimp converts meshes to glTF for the map; see asset_server.py.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libopencv-core406t64 libopencv-imgproc406t64 \
+ && apt-get install -y --no-install-recommends libopencv-core406t64 libopencv-imgproc406t64 assimp-utils \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=ardupilot-gazebo-build /opt/ardupilot_gazebo /opt/ardupilot_gazebo
 
 ENV GZ_SIM_SYSTEM_PLUGIN_PATH=/opt/ardupilot_gazebo/plugins \
-    GZ_SIM_RESOURCE_PATH=/opt/ardupilot_gazebo/models:/opt/ardupilot_gazebo/worlds:/worlds \
+    GZ_SIM_RESOURCE_PATH=/opt/ardupilot_gazebo/models:/opt/ardupilot_gazebo/worlds:/models:/worlds \
     GZ_TRANSPORT_IMPLEMENTATION=zenoh \
     GZ_PARTITION=sdk \
     ZENOH_CONFIG=/etc/zenoh/session.json5
 
 COPY zenoh/session.json5 /etc/zenoh/session.json5
+COPY models /models
 COPY worlds /worlds
 # Run as a second service from this image; see asset_server.py.
 COPY asset_server.py /usr/local/bin/gz-asset-server
 # Headless rendering (EGL) so camera sensors work without a display.
-CMD ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/sdk.sdf"]
+CMD ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/citadel-hill.sdf"]

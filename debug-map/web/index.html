@@ -4,11 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Gazebo</title>
-    <script>
-      // Cesium loads its workers and assets from here. Relative, so it works
-      // behind SpiriConfig's /plugin/<name>/ prefix.
-      window.CESIUM_BASE_URL = new URL("cesium/", window.location.href).href;
-    </script>
   </head>
   <body>
     <!-- The applet list; shell.js fills #applets. -->
@@ -30,8 +25,6 @@
     </aside>
     <main id="stage">
       <div id="map"></div>
-      <!-- Gazebo's 3D world, drawn over the globe; see gz-overlay.js. -->
-      <canvas id="gz"></canvas>
       <button id="sidebar-expand" type="button" title="Show sidebar (/ or Ctrl+K)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
       </button>

@@ -7,8 +7,9 @@
 #
 # The robot's identity reaches its apps through the environment of its
 # SpiriConfig, which compose reads when it starts them: ardupilot-sitl takes
-# its MAVLink system ID from ROBOT_SYSID. A real Mu's OS sets the same
-# variables.
+# its MAVLink system ID from ROBOT_SYSID, and it and sim-agent learn from
+# ROBOT_GIMBAL whether the airframe carries a gimbal camera. A real Mu's OS
+# sets the same variables.
 #
 # Inside, a robot is networked like a real Mu: it runs the Mu's own
 # zenoh-router app, whose host-mode router sits on `spirisynq` here and is
@@ -33,6 +34,14 @@ x-spiri-settings:
     default: "5760"
     min: 1
     max: 65535
+  - env: ROBOT_GIMBAL
+    widget: switch
+    label: Gimbal camera
+    help: >-
+      A 3-axis gimbal with a camera under the airframe. ArduPilot drives it
+      as mount 1, and sim-camera-ingress publishes its picture on SpiriSynq.
+      Takes effect when the robot's apps restart.
+    default: "false"
   - env: SDK_SOURCE
     label: SpiriDevelopmentKit checkout
     help: >-
@@ -48,7 +57,9 @@ services:
     privileged: true
     restart: unless-stopped
     environment:
+      ROBOT_NAME: ${ROBOT_NAME:-mu-1}
       ROBOT_SYSID: ${ROBOT_SYSID:-1}
+      ROBOT_GIMBAL: ${ROBOT_GIMBAL:-false}
       # Optional: the appliance's pull-through registry, e.g. http://registry:5000
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
     volumes:

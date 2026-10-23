@@ -39,6 +39,8 @@ jobs:
             context: ardupilot-sitl/sitl
           - name: sim-agent
             context: sim-agent/agent
+          - name: sim-camera-ingress
+            context: sim-camera-ingress/ingress
     steps:
       - uses: actions/checkout@v4
 

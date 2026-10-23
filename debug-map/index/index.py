@@ -20,7 +20,15 @@ what they look at, not on how much is published.
                              restarted and the client should start over.
     @sdk/index/value         payload: a key. Replies with its latest value,
                              in its own encoding, with the key's count as the
-                             attachment. No reply if it has none.
+                             attachment. No reply if it has none. A Gazebo
+                             topic's value is decoded to JSON.
+    @sdk/index/watch         payload: a Gazebo topic's key. Receive its
+                             messages for the next WATCH_FOR seconds; ask
+                             again to keep them coming.
+
+Gazebo's topics are keys too, `@/<partition>@/<topic>`, listed from their
+publishers' liveliness tokens with their message type as the encoding.
+They only count messages while watched; see gz.py for why.
 
 `@` keys are only matched exactly, so these never show up in `**`.
 """
@@ -35,6 +43,7 @@ import uuid
 import yaml
 import zenoh
 
+import gz
 from check import Checker
 
 ROUTER = os.environ.get("ZENOH_ROUTER", "tcp/zenoh-router:7447")
@@ -43,11 +52,18 @@ PREVIEW_MAX = 4096  # bytes; longer values get no preview
 FORGET_AFTER = 300  # seconds a deleted key is remembered
 DISCOVER_EVERY = 5  # seconds between SpiriSynq discoveries
 CHECK_MAX = 1 << 20  # bytes; bigger values aren't checked against schemas
+WATCH_FOR = 10  # seconds a Gazebo topic is received after it was last asked for
 TEXT = re.compile(r"^(application/(yaml|json|json5|xml)|text/|zenoh/string)")
 
 
 class Key:
-    __slots__ = ("sample", "encoding", "size", "count", "preview", "deleted", "rev", "rated", "rate", "problem")
+    __slots__ = ("sample", "encoding", "size", "count", "preview", "deleted", "rev", "rated", "rate", "problem", "gz")
+
+    def __init__(self):
+        self.sample = self.preview = self.problem = self.gz = None
+        self.encoding = ""
+        self.size = self.count = self.rated = self.deleted = 0
+        self.rate = 0.0
 
 
 class Index:
@@ -62,6 +78,10 @@ class Index:
         # for its schema (None or False if it has no usable one).
         self.owners: dict[str, tuple] = {}
         self.checkers: dict[str, Checker | None | bool] = {}
+        # Gazebo topics by key: the liveliness tokens of their publishers, and
+        # while watched, (lease expiry, subscriber, our subscriber token).
+        self.gz_publishers: dict[str, set[str]] = {}
+        self.gz_watches: dict[str, tuple] = {}
 
     def on_sample(self, sample: zenoh.Sample):
         key = str(sample.key_expr)
@@ -73,16 +93,17 @@ class Index:
             k = self.keys.get(key)
             if k is None:
                 k = self.keys[key] = Key()
-                k.count = k.rated = 0
-                k.rate = 0.0
-                k.problem = None
             k.sample = sample  # a reference; nothing is copied
-            k.encoding = str(sample.encoding)
             k.size = len(sample.payload)
             k.count += 1
             k.deleted = 0
             k.rev = self.rev
             k.preview = None
+            if k.gz:
+                if k.size <= PREVIEW_MAX:
+                    k.preview = json.dumps(json.loads(gz.decode(k.gz, sample.payload.to_bytes())), separators=(",", ":"))[:PREVIEW]
+                return
+            k.encoding = str(sample.encoding)
             if TEXT.match(k.encoding) and k.size <= PREVIEW_MAX:
                 text = sample.payload.to_bytes().decode("utf-8", "replace")
                 k.preview = " ".join(text.split())[:PREVIEW]
@@ -120,6 +141,65 @@ class Index:
             if not k.deleted:
                 k.deleted = now
                 k.rev = self.rev
+
+    # A gz publisher's liveliness token, coming or going. A topic is a key
+    # while anything publishes it.
+    def on_gz_token(self, sample: zenoh.Sample):
+        token = str(sample.key_expr)
+        parsed = gz.parse_token(token)
+        if not parsed or parsed[0] != "MP":
+            return
+        _, partition, topic, msg_type = parsed
+        key = gz.key(partition, topic)
+        with self.lock:
+            publishers = self.gz_publishers.setdefault(key, set())
+            if sample.kind == zenoh.SampleKind.DELETE:
+                publishers.discard(token)
+                if not publishers:
+                    del self.gz_publishers[key]
+                    self.rev += 1
+                    self._delete(key)
+                return
+            publishers.add(token)
+            k = self.keys.get(key)
+            if k is None or k.deleted or k.gz != msg_type:
+                if k is None:
+                    k = self.keys[key] = Key()
+                self.rev += 1
+                k.gz = k.encoding = msg_type
+                k.deleted = 0
+                k.rev = self.rev
+
+    # Receive a Gazebo topic for the next WATCH_FOR seconds, by subscribing
+    # to it the way a gz node does.
+    def watch(self, session: zenoh.Session, key: str) -> bool:
+        with self.lock:
+            k = self.keys.get(key)
+            if not k or not k.gz or k.deleted:
+                return False
+            watch = self.gz_watches.get(key)
+            if watch:
+                self.gz_watches[key] = (time.monotonic() + WATCH_FOR, *watch[1:])
+                return True
+            msg_type = k.gz
+        partition, topic = key[2:].split("@", 1)
+        subscriber = session.declare_subscriber(key, self.on_sample)
+        token = session.liveliness().declare_token(gz.subscriber_token(partition, topic, msg_type))
+        with self.lock:
+            self.gz_watches[key] = (time.monotonic() + WATCH_FOR, subscriber, token)
+        print(f"zenoh-index: watching {key}", flush=True)
+        return True
+
+    def unwatch_expired(self):
+        now = time.monotonic()
+        with self.lock:
+            expired = [key for key, (until, *_) in self.gz_watches.items() if until < now]
+            handles = [self.gz_watches.pop(key) for key in expired]
+        for _, subscriber, token in handles:
+            token.undeclare()
+            subscriber.undeclare()
+        for key in expired:
+            print(f"zenoh-index: stopped watching {key}", flush=True)
 
     def summary(self, since: int) -> bytes:
         with self.lock:
@@ -224,12 +304,26 @@ def main():
             k = index.keys.get(key)
             sample = k and k.sample
             count = k and k.count
-        if sample is not None:
+        if sample is None:
+            return
+        if k.gz:
+            payload = gz.decode(k.gz, sample.payload.to_bytes())
+            query.reply(query.key_expr, payload, encoding=zenoh.Encoding.APPLICATION_JSON, attachment=str(count))
+        else:
             query.reply(query.key_expr, sample.payload, encoding=sample.encoding, attachment=str(count))
+
+    def on_watch(query: zenoh.Query):
+        key = query.payload.to_string() if query.payload else ""
+        if index.watch(session, key):
+            query.reply(query.key_expr, b"")
+        else:
+            query.reply_err(f"{key} is not a Gazebo topic")
 
     session.declare_subscriber("**", index.on_sample)
     session.declare_queryable("@sdk/index", on_summary)
     session.declare_queryable("@sdk/index/value", on_value)
+    session.declare_queryable("@sdk/index/watch", on_watch)
+    session.liveliness().declare_subscriber("@gz/**", index.on_gz_token, history=True)
     print(f"zenoh-index: indexing ** via {ROUTER}", flush=True)
 
     def discovery():
@@ -247,6 +341,7 @@ def main():
         time.sleep(1)
         now = time.monotonic()
         index.rates(now - last)
+        index.unwatch_expired()
         last = now
         ticks += 1
         if ticks % 30 == 0:

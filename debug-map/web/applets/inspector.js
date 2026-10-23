@@ -5,9 +5,9 @@ export default {
   keywords: ["selection", "actions"],
   icon: "ⓘ",
   order: 30,
-  mount(el, { viewer, actions }) {
+  mount(el, { entities, actions }) {
     function render() {
-      const e = viewer.selectedEntity;
+      const e = entities.selected;
       if (!e) return el.replaceChildren("Click something on the map.");
       const name = document.createElement("div");
       name.textContent = e.name ?? e.id;
@@ -22,6 +22,7 @@ export default {
       );
     }
     render();
-    return viewer.selectedEntityChanged.addEventListener(render);
+    entities.addEventListener("select", render);
+    return () => entities.removeEventListener("select", render);
   },
 };

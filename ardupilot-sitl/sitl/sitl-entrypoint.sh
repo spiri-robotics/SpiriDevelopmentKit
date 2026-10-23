@@ -35,6 +35,13 @@ fi
 
 printf 'SYSID_THISMAV %s\n' "$ROBOT_SYSID" > identity.parm
 
+# A gimbal camera (ROBOT_GIMBAL, as SpiriConfig writes a switch): its mount
+# drives SERVO9-11, which sim-agent's model takes as the gimbal's joints.
+defaults=/usr/share/ardupilot/copter.parm,/usr/share/ardupilot/gazebo-iris.parm
+case "$(echo "${ROBOT_GIMBAL:-}" | tr '[:upper:]' '[:lower:]')" in
+	true | 1 | yes | on) defaults="$defaults,/usr/share/ardupilot/gazebo-iris-gimbal.parm" ;;
+esac
+
 echo "sitl: $(hostname) sysid $ROBOT_SYSID, home $SITL_HOME," \
 	"world $sim:$((9002 + 10 * ROBOT_INDEX)), MAVLink on tcp:$((5760 + 10 * ROBOT_INDEX))"
 # --serial0 without :wait: by default SITL doesn't start until a GCS connects,
@@ -42,5 +49,5 @@ echo "sitl: $(hostname) sysid $ROBOT_SYSID, home $SITL_HOME," \
 exec arducopter --model JSON --sim-address="$sim" -I "$ROBOT_INDEX" \
 	--speedup 1 --slave 0 --serial0 tcp:0 \
 	--home "$SITL_HOME" \
-	--defaults /usr/share/ardupilot/copter.parm,/usr/share/ardupilot/gazebo-iris.parm,identity.parm \
+	--defaults "$defaults,identity.parm" \
 	"$@"

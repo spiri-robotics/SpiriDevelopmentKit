@@ -1,0 +1,17 @@
+/* Cameras: the cameras found, then a tile per open one. */
+.win:has(.cams) { width: 480px; max-width: calc(100% - 24px); }
+.cams { display: flex; flex-direction: column; gap: 6px; min-height: 0; max-height: 80vh; overflow: auto; }
+.cams .status { color: var(--muted); font-size: 12px; }
+.cams .list { display: flex; flex-direction: column; gap: 2px; }
+.cams .row { display: flex; gap: 6px; align-items: center; font: 12px ui-monospace, monospace; cursor: pointer; word-break: break-all; }
+.cams .row.gone { color: var(--muted); text-decoration: line-through; }
+.cams .tiles { display: flex; flex-direction: column; gap: 8px; }
+.cams .tile { margin: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.cams .tile.gone { opacity: .5; }
+.cams .tile figcaption { display: flex; gap: 6px; align-items: center; padding: 3px 6px; font-size: 12px; }
+.cams .tile .name { flex: 1; min-width: 0; font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cams .tile select { background: #101317; color: var(--text); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; }
+.cams .tile button { border: 0; background: transparent; color: var(--muted); }
+.cams .tile button:hover { color: var(--text); }
+.cams .tile img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #000; }
+.cams .tile .info { padding: 3px 6px; color: var(--muted); font-size: 11px; }

@@ -28,6 +28,7 @@ COPY --from=build /src/ardupilot/build/sitl/bin/arducopter /usr/local/bin/arduco
 COPY --from=build /src/ardupilot/Tools/autotest/default_params/copter.parm \
                   /src/ardupilot/Tools/autotest/default_params/gazebo-iris.parm \
                   /usr/share/ardupilot/
+COPY gazebo-iris-gimbal.parm /usr/share/ardupilot/
 COPY sitl-entrypoint.sh /usr/local/bin/sitl-entrypoint
 
 # eeprom.bin (parameters) and logs, kept across restarts.

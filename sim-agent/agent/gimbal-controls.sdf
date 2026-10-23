@@ -1,0 +1,41 @@
+
+      <!--
+        The gimbal's mount outputs (SERVO9-11, ardupilot-sitl's
+        gazebo-iris-gimbal.parm), from ardupilot_gazebo's iris_with_gimbal.
+        Inlined by sim_agent.py when the robot has a gimbal.
+      -->
+      <!-- roll range is -30 to +30 deg -->
+      <control channel="8">
+        <jointName>gimbal::roll_joint</jointName>
+        <multiplier>1.047197551196</multiplier>
+        <offset>-0.5</offset>
+        <servo_min>1100</servo_min>
+        <servo_max>1900</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/model/$name/gimbal/cmd_roll</cmd_topic>
+        <p_gain>2</p_gain>
+      </control>
+
+      <!-- pitch range is -135 to +45 deg -->
+      <control channel="9">
+        <jointName>gimbal::pitch_joint</jointName>
+        <multiplier>-3.14159265</multiplier>
+        <offset>-0.75</offset>
+        <servo_min>1100</servo_min>
+        <servo_max>1900</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/model/$name/gimbal/cmd_pitch</cmd_topic>
+        <p_gain>2</p_gain>
+      </control>
+
+      <!-- yaw range is -160 to +160 deg -->
+      <control channel="10">
+        <jointName>gimbal::yaw_joint</jointName>
+        <multiplier>-5.5850536</multiplier>
+        <offset>-0.5</offset>
+        <servo_min>1100</servo_min>
+        <servo_max>1900</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/model/$name/gimbal/cmd_yaw</cmd_topic>
+        <p_gain>2</p_gain>
+      </control>

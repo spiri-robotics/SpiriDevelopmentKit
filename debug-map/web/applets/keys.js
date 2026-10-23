@@ -13,9 +13,15 @@ import "./keys.css";
 // SpiriSynq objects (found by the index's discovery) are drawn in their own
 // colour; selecting one shows its schema, asked of the object itself, and
 // its methods can be called from there.
+//
+// Gazebo's topics are under `@/<partition>@/`. Gazebo only sends a topic
+// someone subscribes to, so the index receives one only while it's selected
+// here (we keep asking it to watch), and shows its messages decoded to JSON.
 
 const POLL_MS = 500;
 const VALUE_MS = 250; // at most this often for the selected key's value
+const WATCH_MS = 3000; // how often to ask the index to keep watching a Gazebo topic
+const isGz = (path) => path.startsWith("@/");
 const MAX_DETAIL = 64 * 1024;
 const TEXT = /^(application\/(yaml|json|json5|xml)|text\/|zenoh\/string)/;
 const decoder = new TextDecoder();
@@ -80,6 +86,32 @@ export default {
     const schemas = new Map();
     // Keys whose values don't fit their object's schema.
     const problems = new Set();
+    // A key's value is shown in these, updated in place so scrolling holds.
+    const keyLine = el("div", "key");
+    const metaLine = el("div", "meta");
+    const problemLine = el("div", "problem");
+    const pre = el("pre");
+    // While text in the pane is being selected, or is selected, it's left
+    // alone so it can be copied; it catches up once the selection goes.
+    let pressing = false;
+    detail.addEventListener("pointerdown", () => (pressing = true));
+    const release = () => {
+      if (!pressing) return;
+      pressing = false;
+      showDetail();
+    };
+    window.addEventListener("pointerup", release);
+    const onSelection = () => {
+      const s = document.getSelection();
+      if (!pressing && (!s || s.isCollapsed)) showDetail();
+    };
+    document.addEventListener("selectionchange", onSelection);
+    function holding() {
+      const s = document.getSelection();
+      return pressing || (s && !s.isCollapsed && detail.contains(s.anchorNode));
+    }
+    const setText = (e, text) => e.textContent !== text && (e.textContent = text);
+
     function showDetail() {
       const n = tree.selected;
       if (!n?.data) return void (detail.hidden = true);
@@ -87,16 +119,17 @@ export default {
       if (d.object) return showObject(n);
       const v = value?.path === n.path ? value : null;
       const as = `${n.path}:${d.count}:${n.deleted}:${v?.count}:${d.problem}`;
-      if (as === shownAs) return;
+      if (as === shownAs || (!detail.hidden && keyLine.textContent === n.path && detail.contains(pre) && holding())) return;
       shownAs = as;
       const t = v && TEXT.test(v.encoding) && v.payload.length <= MAX_DETAIL ? decoder.decode(v.payload) : null;
       detail.hidden = false;
-      detail.replaceChildren(
-        el("div", "key", n.path),
-        el("div", "meta", `${d.encoding} · ${size(d.size)} · ${d.count} messages${n.deleted ? " · deleted" : ""}`),
-        ...(d.problem ? [el("div", "problem", `Doesn't fit the schema: ${d.problem}`)] : []),
-        el("pre", "", v ? (t ?? hex(v.payload)) : "…"),
-      );
+      if (!detail.contains(pre)) detail.replaceChildren(keyLine, metaLine, problemLine, pre);
+      setText(keyLine, n.path);
+      const gzNote = isGz(n.path) ? " · Gazebo topic, received only while selected" : "";
+      setText(metaLine, `${d.encoding} · ${size(d.size)} · ${d.count} messages${n.deleted ? " · deleted" : ""}${gzNote}`);
+      problemLine.hidden = !d.problem;
+      setText(problemLine, d.problem ? `Doesn't fit the schema: ${d.problem}` : "");
+      setText(pre, v ? (t ?? hex(v.payload)) : "…");
     }
 
     function showObject(n) {
@@ -265,10 +298,18 @@ export default {
       }
     })();
 
-    // The selected key's value, whenever its count has moved.
+    // The selected key's value, whenever its count has moved. A Gazebo topic
+    // is only received while we keep asking the index to watch it.
+    let watched = null;
+    let watchedAt = 0;
     (async () => {
       while (!stopped) {
         const n = tree.selected;
+        if (n?.data && isGz(n.path) && !n.deleted && (watched !== n.path || Date.now() - watchedAt > WATCH_MS)) {
+          watched = n.path;
+          watchedAt = Date.now();
+          zenoh.query("@sdk/index/watch", { payload: n.path }).catch((e) => console.warn("zenoh-index watch:", e));
+        }
         if (n?.data && !n.data.object && !tree.paused && (value?.path !== n.path || value.count !== n.data.count)) {
           try {
             const [reply] = await zenoh.query("@sdk/index/value", { payload: n.path });
@@ -291,6 +332,8 @@ export default {
 
     return () => {
       stopped = true;
+      window.removeEventListener("pointerup", release);
+      document.removeEventListener("selectionchange", onSelection);
       clearInterval(timer);
       clearTimeout(debounce);
       tree.destroy();

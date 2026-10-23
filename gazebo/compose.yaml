@@ -10,15 +10,24 @@ x-spiri-settings:
     label: World
     help: >-
       The world to load. Robots spawn into whichever world is up, and take
-      their GPS home from its location.
-    options: [sdk]
-    default: sdk
+      their GPS home from its location. citadel-hill is the Halifax Citadel,
+      hill and buildings; the others are flat ground: yarmouth-airport in Nova
+      Scotia, and cmac, ArduPilot's stock SITL field in Canberra.
+    options: [citadel-hill, yarmouth-airport, cmac]
+    default: citadel-hill
 
 services:
   gazebo:
-    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:edge
     restart: unless-stopped
-    command: ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/${GZ_WORLD:-sdk}.sdf"]
+    command: ["gz", "sim", "-s", "-r", "-v", "3", "--headless-rendering", "/worlds/${GZ_WORLD:-citadel-hill}.sdf"]
+    # Render cameras on the host's GPU. In software, every camera frame
+    # stalls the lock-stepped sim (real-time factor ~0.1). A bind mount, not
+    # `devices:`, so a host without /dev/dri still starts, in software.
+    volumes:
+      - /dev/dri:/dev/dri
+    device_cgroup_rules:
+      - "c 226:* rmw"
     networks:
       - spirisynq
 
@@ -26,11 +35,11 @@ services:
   # debug-map reads meshes from here, and robots read the world's location
   # (/world.sdf). See gz/asset_server.py.
   gazebo-assets:
-    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:0.1.2
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/gazebo:edge
     restart: unless-stopped
     command: ["python3", "/usr/local/bin/gz-asset-server"]
     environment:
-      GZ_WORLD: ${GZ_WORLD:-sdk}
+      GZ_WORLD: ${GZ_WORLD:-citadel-hill}
     networks:
       - spirisynq
 

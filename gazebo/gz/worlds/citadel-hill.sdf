@@ -1,0 +1,80 @@
+<?xml version="1.0" ?>
+<!--
+  The default SDK world: the Halifax Citadel, origin on its parade square.
+  Robots are not in here -- each one's sim-agent spawns itself through
+  /world/citadel-hill/create, near the origin.
+
+  The file name must match the world name: the map and SITL find this file
+  by it.
+-->
+<sdf version="1.9">
+  <world name="citadel-hill">
+    <!-- 1 kHz: ArduPilot SITL lock-steps against this. -->
+    <physics name="1ms" type="ignore">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <!-- Provides /world/<name>/create and /world/<name>/remove. -->
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
+    <!-- Feeds the map viewer; reached only through the plugin's reverse proxy. -->
+    <plugin filename="gz-sim-websocket-server-system" name="gz::sim::systems::WebsocketServer">
+      <port>9002</port>
+      <publication_hz>30</publication_hz>
+      <max_connections>-1</max_connections>
+    </plugin>
+
+    <!-- Every robot's SITL uses this as --home; see docs/architecture.md.
+         The elevation is the parade square's in the map's terrain
+         (Mapterhorn), so the world sits on it there. The map ignores
+         heading. -->
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>44.64750</latitude_deg>
+      <longitude_deg>-63.58028</longitude_deg>
+      <elevation>65.4</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- The hill; its parade square, at the origin, is z = 0. Placed by
+         fitting its three ravelins to OpenStreetMap's, to within 2 m. -->
+    <include>
+      <uri>model://citadel_hill</uri>
+      <pose degrees="true">-366.81 -35.16 0 0 0 -34.28</pose>
+    </include>
+
+    <!-- Level with the streets at the foot of the hill, past the mesh's edge. -->
+    <model name="ground_plane">
+      <static>true</static>
+      <pose>0 0 -19.3 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>2000 2000</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>2000 2000</size></plane></geometry>
+          <material>
+            <ambient>0.5 0.6 0.4 1</ambient>
+            <diffuse>0.5 0.6 0.4 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

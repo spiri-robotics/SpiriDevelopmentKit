@@ -3,8 +3,10 @@
 How the SpiriDevelopmentKit is put together, and why. This is for people working
 *on* the SDK; people working *with* it should start at the [README](../README.md).
 
-Status: design agreed, nothing built yet. Anything marked **(proposed)** is a
-starting point for the first spike, not a settled interface.
+Status: one simulated Mu flies in Gazebo and connects to QGroundControl; see
+[getting-started.md](getting-started.md) to run it. Anything marked
+**(proposed)** is not built yet, and is a starting point rather than a settled
+interface.
 
 ## What it is for
 
@@ -43,7 +45,7 @@ appliance (docker)
 │                     Manages the sim stacks; each robot's UI appears in it.
 ├── zenoh-router      The one router everything meets at, sim and real.
 ├── gazebo            Stock Gazebo Jetty (zenoh backend) + ardupilot_gazebo.
-├── debug-map         CesiumJS view of the sim and of zenoh, its bridge and index.
+├── debug-map         MapLibre view of the sim and of zenoh, its bridge and index.
 ├── registry          Image mirror shared by every robot's inner dockerd.
 └── mu-1 … mu-N       One docker-in-docker container per simulated robot,
                       each running its own SpiriConfig and robot apps.
@@ -93,7 +95,7 @@ differ:
 | Sim app | Does | On a real Mu, replaced by |
 | --- | --- | --- |
 | `ardupilot-sitl` | ArduPilot SITL, the flight controller | the FC board, over serial |
-| `sim-camera-ingress` | Video from Gazebo | `camera-ingress` from the real camera |
+| `sim-camera-ingress` | Video from the Gazebo gimbal camera (see [Cameras](#cameras)) | `camera-ingress` from the real camera |
 | `sim-agent` | Joins the robot to the simulated world (below) | nothing |
 | `sim-link` (optional) | netem on the robot's link: a simulated radio | the real radio |
 
@@ -121,8 +123,8 @@ router as it appears. Robots carry no sim-specific zenoh config.
 
 On its first boot a robot installs and starts the apps every Mu runs, listed in
 `ROBOT_APPS` as `<store>/<app>`. Released, that's only the router. In
-development (`compose.dev.yaml`) it's also `sim-agent` and `ardupilot-sitl`
-from the mounted checkout, built inside the robot (`ROBOT_DEV`). After that
+development (`compose.dev.yaml`) it's also `sim-agent`, `ardupilot-sitl` and
+`sim-camera-ingress` from the mounted checkout, built inside the robot (`ROBOT_DEV`). After that
 they're ordinary installed apps, brought back by the inner dockerd's restart
 policy. Appsource-Spiri-Mu doesn't exist yet, so the router comes from
 Appstore-Spiri_development for now.
@@ -145,8 +147,8 @@ ingredients, is one our robots can join.
 With the zenoh backend, gz-transport maps (verified in the `gz-transport15`
 source):
 
-- A **service** such as `/world/sdk/create` → a zenoh **queryable** at
-  `@/<partition>@/world/sdk/create`. Requests and replies are raw protobuf
+- A **service** such as `/world/citadel-hill/create` → a zenoh **queryable** at
+  `@/<partition>@/world/citadel-hill/create`. Requests and replies are raw protobuf
   bytes (`gz.msgs.EntityFactory` in, `gz.msgs.Boolean` out).
 - A **topic** → pub/sub on the same kind of key. The payload is protobuf, with
   the message type name in the zenoh attachment.
@@ -171,8 +173,9 @@ the flight controller and its own airframe, so it:
 - **stays on plain UDP, not zenoh.** It's on the lockstep critical path, about
   1 kHz per robot, and an extra hop slows the whole world.
 - **is exempt from `sim-link`'s netem.** Radio loss must not corrupt physics.
-- uses **port `9002 + 10·index`**, with SITL started as `-I <index>`. The
-  index comes from the robot's config, set by whatever launched the swarm.
+- uses **port `9002 + 10·index`**, with SITL started as `-I <index>`. With one
+  robot the index is 0. With several it has to come from the robot's
+  config, set by whatever launched the swarm.
 
 With `<lock_step>` on, the slowest robot sets the real-time factor for the
 whole world. Rendered cameras make this worse. It's the main performance risk,
@@ -217,35 +220,84 @@ world to step, or patch the plugin to time out.
 
 ### Cameras
 
-**(proposed)** ardupilot_gazebo's GStreamer camera plugin sends H.264/RTP over
-UDP to the robot's address, which `sim-camera-ingress` consumes like a real
-camera stream. This needs a UDP path from the world to the robot, which the
-appliance's bridge provides. Robots reachable only through zenoh will need
-video over zenoh instead. That isn't required for the contract.
+A robot's **Gimbal camera** setting (`ROBOT_GIMBAL`, on `sim-robot`) gives it
+ardupilot_gazebo's 3-axis `gimbal_small_3d` with a camera, placed as their
+`iris_with_gimbal` places it. Two apps read the setting from the robot's
+environment:
 
-## The map: Cesium first
+- `sim-agent` adds the gimbal to the model it spawns (`gimbal.sdf`), with its
+  topics under the robot's name: the joints listen on
+  `/model/<name>/gimbal/cmd_{roll,pitch,yaw}`, and the camera publishes
+  `/model/<name>/gimbal/image`, 640×480 at 10 Hz by default.
+- `ardupilot-sitl` adds ardupilot_gazebo's `gazebo-iris-gimbal.parm`, so
+  mount 1 drives SERVO9–11, which the ArduPilotPlugin turns into joint
+  commands. The gimbal is pointed the way a real one is, over MAVLink.
 
-**Decision:** the operator's view of the swarm is a CesiumJS globe. It draws
+The picture never leaves zenoh. `sim-camera-ingress` is SpiriCamera's
+camera-ingress, the app a real Mu runs, plus a `gz://` source
+(`sim-camera-ingress/ingress/gz_source.py`) that subscribes to the camera's gz
+topic and decodes `gz.msgs.Image` by hand. It publishes JPEG frames on
+SpiriSynq like any other camera. There's no UDP path from the world to the
+robot and no H.264 step, so robots reachable only through zenoh get video
+too. Raw frames cost about 9 MB/s through the router at the default size.
+
+gz-transport only publishes a topic that has a subscriber, and learns of
+subscribers from their liveliness tokens, so the `gz://` source declares
+one. A camera nobody subscribes to isn't rendered, so the camera costs nothing
+until its ingress runs.
+
+**Known gap: removed models leave tokens behind.** Gazebo doesn't undeclare
+a removed model's sensor and controller tokens, so its topics still look
+published until the world restarts.
+
+## The map: MapLibre
+
+**Decision:** the operator's view of the swarm is a MapLibre GL map. It draws
 robots from what they publish on SpiriSynq, not from Gazebo, and it is the same
-view for sim and real robots. Gazebo's world geometry is a layer on that globe.
-The gzweb viewer it replaced is gone.
+view for sim and real robots. Gazebo's world geometry is a three.js layer on
+that map. The gzweb viewer it replaced is gone, and so is the CesiumJS globe
+that came between.
+
+**Why not Cesium.** Cesium drew every frame whether or not anything changed,
+and each frame was expensive: profiled in Firefox on the citadel world, about
+11 ms of JavaScript per frame at 60 fps: 70% of a CPU core, and steady GPU
+load, for a still scene. The cost was per draw call (about 220 a frame, from several passes
+over a 57-primitive scene, at ~50 µs of JavaScript each), not effects, so
+turning features off couldn't fix it; request-render mode only halved it while
+poses streamed. MapLibre draws only on a change, and three.js draws the world
+in one pass at a few µs per draw. On the same world the map draws a handful
+of frames while idle, against Cesium's 60 a second. The cost is the true
+globe: MapLibre is a flat map with pitch, which suits a swarm over a few
+kilometres.
 
 **Today (interim).** The map is its own app, `debug-map/`, separate from the
-simulation so either can be restarted or replaced alone. The page is `debug-map/web/`. Robots don't publish
-telemetry over zenoh yet, so it draws models from Gazebo's websocket instead
-(scene, deletions, poses) and anchors them with the world's
-`<spherical_coordinates>`, read from the world SDF via `gazebo-assets`. The 3D
-world is gzweb's own three.js scene (meshes, materials, link poses), rendered
-in a transparent canvas over the globe with its camera copied from Cesium's
-each frame (`gz-overlay.js`). Being an overlay, models always draw over the
-globe, so terrain can't hide them; rendering them as Cesium glTF models would
-fix that. Ground planes are outlined on the map instead of drawn.
-The base imagery is Natural Earth II, and Esri World Imagery and OpenStreetMap
-stream from the internet as layers that can be switched on and off, with the
-Gazebo layer. None of this works airgapped. It's a stand-in until robot
-telemetry and the local tilesets below exist.
+simulation so either can be restarted or replaced alone. The page is
+`debug-map/web/`. Robots don't publish telemetry over zenoh yet, so it draws
+models from Gazebo's websocket instead (scene, deletions, poses) and anchors
+them with the world's `<spherical_coordinates>`, read from the world SDF via
+`gazebo-assets`. The 3D world is a MapLibre custom layer drawn by three.js in
+the map's own GL context, so it shares the map's depth buffer
+(`gz-world.js`). Mesh visuals are glTF: `gazebo-assets` converts Gazebo's
+meshes with assimp on first request and caches them, matching Gazebo's axis
+and unit handling (`gazebo/gz/asset_server.py`). Simple shapes are three.js
+geometry, SDF colours override mesh materials as in Gazebo, and model,
+nested-model and link poses come from the websocket by entity id. A pose
+asks for a frame only if it moved visibly (0.1 mm): Gazebo sends every pose
+at 30 Hz, and physics jitters a resting robot by microns. Gazebo's lights are
+dropped; a fixed overhead light shows the models. Each model has a DOM label
+kept over it, which is also what's clicked to select it. Ground planes are
+outlined on the map instead of drawn. gzweb is used only for its websocket
+client. (An earlier version drew gzweb's three.js scene in a canvas over the
+globe; it couldn't depth-test against the map, so it covered whatever was
+drawn above the models. A custom layer doesn't have that problem.)
+Esri World Imagery, OpenStreetMap, hillshading and OSM 3D buildings
+(OpenFreeMap's vector tiles) stream from the internet as layers that can be
+switched on and off, with the Gazebo layer, over Mapterhorn terrain (toggled
+by the map's terrain button). Offline, the map is a plain background with the
+world on it. It's a stand-in until robot telemetry and the appliance's own
+tile server exist.
 
-**Applets.** The globe is the only thing always on screen, apart from the
+**Applets.** The map is the only thing always on screen, apart from the
 connection status. Every tool is an applet: one file in `web/applets/`, found
 at build time, listed by title under its group in a sidebar, opened into a
 floating window and unmounted when closed (`shell.js`). There may be hundreds,
@@ -280,6 +332,26 @@ so this traffic never appears in `**`. The *Zenoh keys* applet is built on it:
 a filterable tree of every key (`web/path-tree.js`, reusable for any `/`-path
 list), with deleted keys struck through for a minute.
 
+Gazebo's topics are in the tree too, under `@/<partition>@/`, though `**`
+never sees them (`index/gz.py`). The index lists them from their publishers'
+liveliness tokens, with the message type as the encoding. It doesn't
+subscribe to them all, because gz-transport only publishes a topic that has a
+subscriber: subscribing to everything would render every camera. A topic is
+received only while it's selected. The page asks `@sdk/index/watch` to keep
+it coming every few seconds, and the index subscribes as a gz node would and
+lets go 10 s after the last ask. Its messages are decoded to JSON with
+gz-msgs' definitions, built into the image, with long byte fields shown as
+their size.
+
+The *Cameras* applet (`web/applets/cameras.js`) lists every SpiriSynq object
+whose classes include `Camera`, found by its own `**/sr_metadata` discovery,
+so it covers real and simulated cameras alike. An open camera's `image` is
+fetched from the index rather than subscribed to, for the same reason as
+above. Each tile asks for the next frame only after drawing the last one, at
+a rate picked on the tile, so a slow link shows fewer frames instead of
+falling behind. WebRTC (SpiriCamera's `webrtc_offer`) would be smoother, but
+a browser can't reach a camera inside a robot's inner docker network.
+
 The index also runs SpiriSynq discovery (`**/sr_metadata`) every 5 s and lists
 the objects it finds in the summary, since an object's schema and methods are
 queryables that `**` never sees. *Zenoh keys* draws those objects in their own
@@ -312,17 +384,21 @@ Why the robots and not Gazebo:
 | Sim-only entities | targets and intruders, from Gazebo poses | yes | no |
 
 **Placement.** The Gazebo world's `<spherical_coordinates>` is its anchor on
-the globe (`sdk.sdf` is at 44.6488, -63.5752, ENU). Every robot's `--home`
+the map (`citadel-hill.sdf` is at 44.64750, -63.58028, ENU). Every robot's `--home`
 must equal it. That is already a requirement for GPS. The world layer is placed
-at that origin with an ENU-to-ECEF transform, so world geometry and robot
-positions line up only if both are right.
+at that origin, ENU metres scaled into Web Mercator there, so world geometry
+and robot positions line up only if both are right. With terrain on, the world
+sits at its `<elevation>` above sea level, the altitude its robots report from;
+without, on the flat map at sea level. A world's `<elevation>` should be the
+map's DEM height at its origin, or the world floats over the terrain or sinks
+into it: citadel-hill's is 65.4 m, Mapterhorn's height for its parade square.
 
 **World geometry.** The world's static models are exported once, per world, to
 glTF and served next to it. **(proposed)** This is done at image build time
 from the same SDF and meshes the world container already ships, and served by
 `gazebo-assets`. Terrain is the reverse case. A world meant to look like a real
 place takes its heightmap *from* the same DEM the map uses, so Gazebo and
-Cesium agree on where the ground is.
+the map agree on where the ground is.
 
 **Sim-only entities.** Targets and intruder drones aren't robots and publish
 nothing. A small bridge subscribes to Gazebo's pose topic over zenoh and
@@ -336,38 +412,32 @@ the actual shared piece. The map is one consumer of it.
 
 ### Map data
 
-The appliance is airgapped (#92), so the map can't stream anything. That rules
-out most of what Cesium is known for.
-
-**Not usable:**
-
-- **Cesium ion** (Cesium World Terrain, OSM Buildings, Bing imagery) is a cloud
-  service. Its free Community tier is for non-commercial use. Cesium's own
-  assets can't be downloaded for offline use, and Bing and Google Photorealistic
-  3D Tiles forbid offline caching. Offline ion is the paid *Cesium ion
-  Self-Hosted*. We'd only need that if the open tooling below fails.
+The appliance is airgapped (#92), so the map can't stream anything. Bing and
+Google imagery and Google's Photorealistic 3D Tiles forbid offline caching, so
+they're out.
 
 **Usable, and free:**
 
 | Data | Resolution | Licence | Notes |
 | --- | --- | --- | --- |
-| CesiumJS itself | n/a | Apache 2.0 | Self-hosted, no ion token needed. |
-| Natural Earth II imagery | ~1 km | public domain | Ships inside CesiumJS. The offline fallback: a usable globe with zero setup. |
+| MapLibre GL JS | n/a | BSD-3-Clause | Self-hosted, no token. |
+| Natural Earth II imagery | ~1 km | public domain | A small world-wide raster pyramid: the offline base, once it's built. |
 | Copernicus DEM GLO-30 | 30 m, global | free, commercial use allowed | Needs a source notice and a liability disclaimer. GLO-10 is not public. |
 | NRCan HRDEM | 1–2 m, lidar, most of southern Canada | Open Government Licence – Canada | The right terrain for Canadian test sites. CDEM is its legacy predecessor. |
 | Sentinel-2 cloudless (EOX) | 10 m | depends on year | 2016 is CC BY 4.0. Some later years were non-commercial. Check the year before shipping. |
 | OpenStreetMap | vector | ODbL | Buildings and roads, extruded to 3D Tiles if we want them. Share-alike applies to derived databases. |
 
-The globe's base layer is Natural Earth II. Each scenario site adds a
+The map's base layer is Natural Earth II. Each scenario site adds a
 high-resolution patch over it: Copernicus or HRDEM terrain, Sentinel-2 imagery,
 and optional OSM buildings, clipped to a few km around the site.
 
-**Tooling (proposed).** Terrain becomes quantized-mesh tiles with Cesium
-Terrain Builder (`tumgis/ctb-quantized-mesh`). Imagery becomes a TMS/XYZ
-pyramid with `gdal2tiles`. Both are static files served by Caddy. CTB is
-unmaintained and known to emit flat terrain from some GeoTIFFs (nodata and
-vertical units), so check its output on a small area first. The site bundles are
-built once, online, and shipped in the offline bundle (`offline/`).
+**Tooling (proposed).** Terrain becomes Terrarium (or Mapbox terrain-RGB)
+PNG tiles, MapLibre's `raster-dem`, with `rio-rgbify` or GDAL. Imagery becomes
+an XYZ pyramid with `gdal2tiles`. Both can be packed into PMTiles files, one
+per site, served as static files by Caddy. Turning terrain on raises the
+ground under the Gazebo layer, which today sits at sea level, so the layer has
+to follow it. The site bundles are built once, online, and shipped in the
+offline bundle (`offline/`).
 
 **Attribution.** Copernicus, EOX and OSM all require credits on the map. Each
 tileset ships with its credit string, which the viewer shows.
@@ -383,9 +453,11 @@ Anything that has to cross machines goes through **zenoh routing**.
   sim robots on one appliance. Verify this in the spike.
 - Only a few ports are published to the LAN: the SDK SpiriConfig UI, and the
   zenoh router (`7447`), which real robots and developer machines connect
-  through. MAVLink for QGroundControl is a third. A mavlink-router on the
-  appliance fans every sim robot into one endpoint, each robot with its own
-  system ID. That's how the behaviour team's QGC plugin flies the swarm.
+  through. MAVLink for QGroundControl is a third. Today the one robot
+  publishes its SITL's TCP 5760 directly. **(proposed)** With more robots, a
+  mavlink-router on the appliance fans every sim robot into one endpoint,
+  each robot with its own system ID. That's how the behaviour team's QGC
+  plugin flies the swarm.
 - **Real robots** run their own zenoh router, which connects to the appliance's.
   To SpiriSynq, sim and real robots are then one network. SSH to real hardware
   works as usual. The SDK SpiriConfig can't discover a real robot's UI yet. That
@@ -446,9 +518,10 @@ image they pin is loaded into its registry.
                       Any other top-level directory must not have a
                       compose file, or SpiriConfig lists it as an app.
 gazebo/               gz/ (world image), served by gazebo and gazebo-assets
-debug-map/            web/ (Cesium map and zenoh-ws), index/ (zenoh-index)
+debug-map/            web/ (MapLibre map and zenoh-ws), index/ (zenoh-index)
 ardupilot-sitl/       sitl/ (ArduCopter SITL image), installed inside a robot
 sim-agent/            agent/ (spawns the robot's airframe), installed inside a robot
+sim-camera-ingress/   ingress/ (SpiriCamera + gz:// source), installed inside a robot
 sim-robot/            robot/ (docker-in-docker + SpiriConfig image)
 compose.yaml          (planned) the whole appliance, for development
 models/               robot SDF templates and meshes (shipped in robot images)
@@ -470,7 +543,7 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
 - [x] The OSRF Jetty packages were built with zenoh (`ldd libgz-transport15.so | grep zenoh`).
 - [x] ardupilot_gazebo builds against Jetty, with `GZ_VERSION=jetty`.
 - [x] Spawn and remove from Python over raw zenoh with gz-msgs protobufs.
-- [x] gzweb renders the world through Caddy (since replaced by the Cesium map).
+- [x] gzweb renders the world through Caddy (since replaced by the map).
       Gazebo's websocket sends meshes at ~245 KB/s, so the viewer fetches them
       over HTTP instead
       (`gazebo/gz/asset_server.py`).
@@ -488,7 +561,7 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
       robot.
 - [ ] What position/state the Mu publishes on SpiriSynq today, and whether it
       is enough for the map.
-- [ ] CTB produces correct quantized-mesh terrain from Copernicus GLO-30 for
-      one site, served offline to CesiumJS.
+- [ ] Terrarium terrain tiles from Copernicus GLO-30 for one site, served
+      offline to MapLibre, with the Gazebo layer still on the ground.
 - [ ] A world's static models export to glTF and line up on the globe at its
       `<spherical_coordinates>`.

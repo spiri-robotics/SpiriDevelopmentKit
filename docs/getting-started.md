@@ -1,10 +1,18 @@
 # Getting started
 
-How to run the SDK on your own Linux machine. For how the parts fit together,
-see [architecture.md](architecture.md).
+How to run the SDK on your own Linux machine, from source: a Gazebo world, a
+map to watch it on, and one simulated Spiri Mu running ArduPilot that you fly
+from QGroundControl. Everything runs as SpiriConfig apps. For how the parts
+fit together, see [architecture.md](architecture.md).
 
-You need Docker, with your user able to run `docker` without sudo, and
-[uv](https://docs.astral.sh/uv/).
+You need:
+
+- Linux, with Docker. Your user must be able to run `docker` without sudo.
+  The simulated robot runs as a privileged container.
+- [uv](https://docs.astral.sh/uv/), to run SpiriConfig.
+- [QGroundControl](https://qgroundcontrol.com/), to fly the robot.
+- An internet connection. The first builds pull Gazebo and compile
+  ArduCopter, which takes a few minutes.
 
 ## 1. Start SpiriConfig
 
@@ -12,55 +20,27 @@ You need Docker, with your user able to run `docker` without sudo, and
 $ uvx spiriconfig serve --no-login-required
 ```
 
-Open <http://localhost:8337>.
+Leave it running, and open <http://localhost:8337>.
 
 `--no-login-required` is safe here because SpiriConfig only listens on
 `127.0.0.1`. Don't combine it with `SPIRICONFIG_HOST=0.0.0.0`: anyone on your
 network would control your docker daemon.
 
-## 2. Add the simulation app store
+## 2. Add the app stores
 
-In the app store page, press **Add store** and enter:
+You need two. **Appsource-Spiri-Simulation** has the zenoh router. **This
+repo** has everything else, until the next release puts it in the appsource
+too.
 
-```
-https://github.com/spiri-robotics/Appsource-Spiri-Simulation
-```
-
-Or from a shell:
+Add the appsource from the app store page (**Add store**), or from a shell:
 
 ```console
 $ uvx spiriconfig appstore add https://github.com/spiri-robotics/Appsource-Spiri-Simulation
 ```
 
-## 3. Install the apps
-
-Install and start them in this order:
-
-1. **zenoh-router.** Everything meets at this router, and it creates the
-   `spirisynq` network the other apps join. It listens on port 7447, which is
-   how real robots and other machines reach the sim.
-2. **gazebo.** The simulated world. It has no page of its own; pick the
-   world in its settings.
-3. **debug-map.** A globe with the Gazebo world on it, and a
-   tool to browse everything on zenoh. Once it's up, *Debug map* appears in
-   SpiriConfig's sidebar. It isn't in Appsource-Spiri-Simulation yet, so
-   install it from this repo's own store (below).
-
-## What isn't there yet
-
-- **Simulated robots.** `sim-robot`, `ardupilot-sitl` and `sim-agent` aren't
-  in Appsource-Spiri-Simulation yet. Install them from this repo's own store
-  (below).
-- **The map.** Appsource-Spiri-Simulation's `gazebo` pins the last release,
-  which still bundles the older viewer. The `debug-map` app, its applets and *Zenoh
-  keys* are only in this repo until the next release.
-- **More than one robot.** The SDK runs one simulated robot, `mu-1`, for now.
-
-## Developing the SDK
-
-This repo is an app store too: each app is a top-level directory with a
-compose file. Link your checkout into SpiriConfig's store directory, and it
-shows up next to Appsource-Spiri-Simulation:
+Add this repo by linking a checkout into SpiriConfig's store directory. Use a
+link, not **Add store**: apps installed through the link run your working
+tree, so your edits take effect without pulling anything.
 
 ```console
 $ git clone git@github.com:spiri-robotics/SpiriDevelopmentKit.git
@@ -68,49 +48,79 @@ $ mkdir -p ~/.local/share/spiriconfig/stores
 $ ln -s "$PWD/SpiriDevelopmentKit" ~/.local/share/spiriconfig/stores/SpiriDevelopmentKit
 ```
 
-Use a symlink, not **Add store**. Adding a store makes its own clone, which
-you'd have to keep pulling. Through the link, apps installed from this store
-run your working tree.
+**Don't press Update on an app from SpiriDevelopmentKit.** Update commits every
+edit in the checkout and merges its upstream branch into yours. Use git
+yourself. Removing the store only deletes the link.
 
-Both stores have a `gazebo`, so name the one you mean:
+## 3. Start the world
+
+Install three apps, in this order. Both stores have a `gazebo`, so name the
+store:
 
 ```console
+$ uvx spiriconfig appstore install Appsource-Spiri-Simulation/zenoh-router
 $ uvx spiriconfig appstore install SpiriDevelopmentKit/gazebo
 $ uvx spiriconfig appstore install SpiriDevelopmentKit/debug-map
 ```
 
-Every app here has a `compose.dev.yaml` that builds its images, so SpiriConfig
-offers **Up (dev)** for it in advanced mode. Up (dev) doesn't rebuild, though:
-it only builds images that don't exist yet. Build first, and again after each
-change:
+| App | What it is |
+| --- | --- |
+| `zenoh-router` | The router everything meets at. It creates the `spirisynq` docker network the other apps join. |
+| `gazebo` | The simulated world. Choose which in its settings. |
+| `debug-map` | A globe showing the world and everything on zenoh. It appears in SpiriConfig's sidebar as *Debug map*. |
+
+Start the router as is. Gazebo and the map build from your checkout, so build
+them first:
 
 ```console
-$ cd ~/spiri-apps/gazebo
-$ docker compose -p gazebo -f compose.yaml -f compose.dev.yaml build
+$ uvx spiriconfig docker up zenoh-router
+$ for app in gazebo debug-map; do
+    (cd ~/spiri-apps/$app && docker compose -p $app -f compose.yaml -f compose.dev.yaml build) &&
+    uvx spiriconfig docker up $app --dev
+  done
+```
+
+In the web UI, **Up (dev)** does the same as `docker up --dev`, in advanced
+mode. Neither rebuilds for you yet, so build after every change.
+
+**Choosing a world.** Set it in Gazebo's settings, or:
+
+```console
+$ uvx spiriconfig docker settings gazebo GZ_WORLD=yarmouth-airport
 $ uvx spiriconfig docker up gazebo --dev
 ```
 
-The first Gazebo build compiles ardupilot_gazebo and takes a while.
+| World | Where |
+| --- | --- |
+| `citadel-hill` (default) | The Halifax Citadel: the hill and its buildings. |
+| `yarmouth-airport` | Yarmouth airport, Nova Scotia. Flat ground. |
+| `cmac` | ArduPilot's stock SITL field in Canberra. Flat ground. |
 
-**Don't press Update on an app from this store.** Update commits every edit to
-a tracked file in the checkout, then merges its upstream branch into yours.
-That's right for an installed app store, and wrong for the branch you're
-working on. Use git yourself. Removing the store is safe: it deletes the
-symlink, not your checkout.
+Restart the robot after changing the world (see [Day to day](#day-to-day)).
 
-### Robots
+## 4. Add the robot
 
-Install `SpiriDevelopmentKit/sim-robot` as `mu-1`:
+The SDK runs one simulated robot, `mu-1`. Install it:
 
 ```console
 $ uvx spiriconfig appstore install SpiriDevelopmentKit/sim-robot --as mu-1
 ```
 
-A robot mounts your checkout as a store too, so the apps it installs from
-SpiriDevelopmentKit are your working tree. Tell it where the checkout is: in
-the robot's settings, turn on advanced mode and set *SpiriDevelopmentKit
-checkout*. The same settings hold its name, its MAVLink system ID and the
-QGroundControl port. Then build and start it as above:
+The robot installs its own apps from your checkout, so it needs to know
+where that is. In its settings, turn on advanced mode and set *SpiriDevelopmentKit
+checkout*, or:
+
+```console
+$ uvx spiriconfig docker settings mu-1 SDK_SOURCE="$PWD/SpiriDevelopmentKit"
+```
+
+Its other settings are its name, its MAVLink system ID, the port
+QGroundControl connects to, and *Gimbal camera*. The defaults are fine. The
+gimbal camera is off by default: turn it on for a 3-axis gimbal with a camera
+under the airframe, which you point from QGroundControl like any ArduPilot
+mount and watch in the debug map's *Cameras* applet.
+
+Build it and start it:
 
 ```console
 $ cd ~/spiri-apps/mu-1
@@ -118,31 +128,89 @@ $ docker compose -p mu-1 -f compose.yaml -f compose.dev.yaml build
 $ uvx spiriconfig docker up mu-1 --dev
 ```
 
-On its first boot the robot installs and starts its own apps from your
-checkout: the Mu's zenoh router, `sim-agent` (which puts its airframe into the
-world) and `ardupilot-sitl` (its flight controller). It builds them itself,
-and the first SITL build compiles ArduCopter, so give it a few minutes. Watch
-for `robot: first boot done` in its log:
+The robot is a computer of its own: a docker daemon and a SpiriConfig, like a
+real Mu's. On its first boot it installs four apps into itself, and builds
+three of them, which takes a few minutes:
+
+| App inside the robot | What it does | On a real Mu |
+| --- | --- | --- |
+| `zenoh-router` | The Mu's own router, joined to the world's | the same app |
+| `sim-agent` | Puts the robot's airframe into the world, and back after the world restarts | nothing: a real Mu has a body |
+| `ardupilot-sitl` | The flight controller: ArduCopter SITL, flying the airframe in Gazebo | the flight controller board |
+| `sim-camera-ingress` | The gimbal camera's picture, on SpiriSynq. Idle without *Gimbal camera* | `camera-ingress`, from the real camera |
+
+Watch for the end of the first boot:
 
 ```console
 $ docker logs -f mu-1 2>&1 | grep robot:
+robot: first boot done
 ```
 
-The robot appears in the sidebar as *mu-1*, and in the Gazebo world as `mu-1`.
+The robot then appears in the world, on the map, and in SpiriConfig's
+sidebar as *mu-1*.
 
-**Connecting QGroundControl.** In QGC, open *Application Settings → Comm
-Links*, add a **TCP** link to `localhost` port 5760, and connect. From another
-machine, use this machine's address instead. The port is in the robot's
-settings.
+## 5. Fly it
 
-A robot's own SpiriConfig shown inside the SDK's is still being worked out
-(see [architecture.md](architecture.md#open-questions-and-first-spike)), so
-expect rough edges there. To look inside a robot directly:
+In QGroundControl, open *Application Settings → Comm Links*, add a link of
+type **TCP** to host `localhost`, port **5760**, and connect. From another
+machine, use this machine's address.
+
+The robot shows up as system ID 1 with a GPS fix, at the world's location.
+Arm and take off as with any ArduCopter.
+
+## Day to day
+
+**After changing code**, build and restart the app that changed. For an app on
+your machine (`gazebo`, `debug-map`, `mu-1`), build as in step 3. For an app
+inside the robot, build it there:
+
+```console
+$ docker exec mu-1 sh -c 'cd /srv/compose/ardupilot-sitl &&
+    docker compose -p ardupilot-sitl -f compose.yaml -f compose.dev.yaml up -d --build'
+```
+
+**After changing the robot's settings**, such as *Gimbal camera*, restart it
+with Up (dev): its apps read them from the robot's environment, which is set
+when its container is created. A robot from before `sim-camera-ingress`
+existed won't install it by itself; install it inside the robot like the
+others, or start the robot from scratch (below).
+
+**After changing the world, or restarting Gazebo**, restart the robot.
+`sim-agent` puts the airframe back by itself, but SITL looks up the world's
+address and location only when it starts.
+
+```console
+$ docker restart mu-1
+```
+
+**To look inside the robot**:
 
 ```console
 $ docker exec -it mu-1 sh
 # docker ps
+# docker logs ardupilot-sitl-sitl-1
 ```
 
-A robot keeps its images and installed apps in named volumes. Bring it down
-with `docker compose -p mu-1 down -v` to start it fresh.
+**To start the robot from scratch**, delete its volumes. Its next boot is a
+first boot again, builds included.
+
+```console
+$ cd ~/spiri-apps/mu-1 && docker compose -p mu-1 down -v
+$ uvx spiriconfig docker up mu-1 --dev
+```
+
+## Known issues
+
+- **The world freezes if SITL stops while its airframe is in the world.**
+  Gazebo waits for SITL before every physics step, with no timeout. Restarting
+  the robot brings it back. If you remove the robot for good, restart Gazebo.
+- **Nothing rebuilds by itself.** Up (dev) only builds images that don't exist
+  yet.
+- **One robot.** Several robots need their own ports and system IDs, and a way
+  for QGroundControl to reach all of them. Not done yet.
+- **The robot's own SpiriConfig** opens inside yours under *mu-1*, but nesting
+  one SpiriConfig in another still has rough edges. A shell into the robot
+  always works.
+- **The released appsource lags behind.** Appsource-Spiri-Simulation's `gazebo`
+  is the last release, with the older viewer and no robot. Use this repo's
+  apps until the next release.

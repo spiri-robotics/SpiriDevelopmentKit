@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<!--
+  The Halifax Citadel and its hill, from the old spiri_development_kit. The
+  parade square is at z = 0 and the streets around the hill at about z = -19.
+  The mesh is about 3% small across; the scale makes it match OpenStreetMap.
+-->
+<sdf version="1.9">
+  <model name="citadel_hill">
+    <static>true</static>
+    <link name="link">
+      <visual name="visual">
+        <geometry><mesh><uri>model://citadel_hill/meshes/citadel.dae</uri><scale>1.034 1.034 1</scale></mesh></geometry>
+      </visual>
+      <collision name="collision">
+        <geometry><mesh><uri>model://citadel_hill/meshes/citadel.dae</uri><scale>1.034 1.034 1</scale></mesh></geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>
