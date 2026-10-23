@@ -273,22 +273,28 @@ kilometres.
 **Today (interim).** The map is its own app, `debug-map/`, separate from the
 simulation so either can be restarted or replaced alone. The page is
 `debug-map/web/`. Robots don't publish telemetry over zenoh yet, so it draws
-models from Gazebo's websocket instead (scene, deletions, poses) and anchors
+models from Gazebo's own topics instead (scene, deletions, poses), and anchors
 them with the world's `<spherical_coordinates>`, read from the world SDF via
-`gazebo-assets`. The 3D world is a MapLibre custom layer drawn by three.js in
+`gazebo-assets`. Those topics come over zenoh, the same way zenoh-index gets
+them (`web/gz-transport.js`): the page finds the world by its `scene/info`
+service's liveliness token, declares a gz subscriber token for each topic so
+Gazebo publishes it, and decodes the protobufs with gz-msgs' definitions,
+compiled into the page at build time (`web/gz-msgs.mjs`). There's no websocket
+server in Gazebo: its `WebsocketServer` system spun a whole core once a client
+had connected. The 3D world is a MapLibre custom layer drawn by three.js in
 the map's own GL context, so it shares the map's depth buffer
 (`gz-world.js`). Mesh visuals are glTF: `gazebo-assets` converts Gazebo's
 meshes with assimp on first request and caches them, matching Gazebo's axis
 and unit handling (`gazebo/gz/asset_server.py`). Simple shapes are three.js
 geometry, SDF colours override mesh materials as in Gazebo, and model,
-nested-model and link poses come from the websocket by entity id. A pose
-asks for a frame only if it moved visibly (0.1 mm): Gazebo sends every pose
-at 30 Hz, and physics jitters a resting robot by microns. Gazebo's lights are
+nested-model and link poses come from `dynamic_pose/info` by entity id. A pose
+asks for a frame only if it moved visibly (0.1 mm), since physics jitters a
+resting robot by microns, and motion is drawn at most 30 times a second:
+Gazebo publishes poses at 60 Hz, and a spinning rotor moves on every one. Gazebo's lights are
 dropped; a fixed overhead light shows the models. Each model has a DOM label
 kept over it, which is also what's clicked to select it. Ground planes are
-outlined on the map instead of drawn. gzweb is used only for its websocket
-client. (An earlier version drew gzweb's three.js scene in a canvas over the
-globe; it couldn't depth-test against the map, so it covered whatever was
+outlined on the map instead of drawn. (An earlier version drew gzweb's
+three.js scene in a canvas over the globe; it couldn't depth-test against the map, so it covered whatever was
 drawn above the models. A custom layer doesn't have that problem.)
 Esri World Imagery, OpenStreetMap, hillshading and OSM 3D buildings
 (OpenFreeMap's vector tiles) stream from the internet as layers that can be
@@ -389,9 +395,11 @@ must equal it. That is already a requirement for GPS. The world layer is placed
 at that origin, ENU metres scaled into Web Mercator there, so world geometry
 and robot positions line up only if both are right. With terrain on, the world
 sits at its `<elevation>` above sea level, the altitude its robots report from;
-without, on the flat map at sea level. A world's `<elevation>` should be the
-map's DEM height at its origin, or the world floats over the terrain or sinks
-into it: citadel-hill's is 65.4 m, Mapterhorn's height for its parade square.
+without, on the flat map at sea level. A world's `<elevation>` should put its
+ground just over the map's DEM, or the terrain shows through it. The DEM isn't
+flat where the world's ground is: across citadel-hill's parade square
+Mapterhorn runs from 63 to 66.5 m, so its `<elevation>` is 67 m, not the
+65.4 m at the origin.
 
 **World geometry.** The world's static models are exported once, per world, to
 glTF and served next to it. **(proposed)** This is done at image build time

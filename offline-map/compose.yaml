@@ -1,0 +1,42 @@
+# offline-map: map tiles over zenoh, for maps on an airgapped appliance. Each
+# layer (osm, terrain) is a MapLayer SpiriSynq object at
+# <host>/offline-map/<layer>, and its tiles a zenoh queryable beside it; see
+# server/server.py and NOTES-offline-map.md. Install zenoh-router first.
+#
+# The world's osm base, to z6, ships in the image. Regions go in the
+# offline-map volume, one .pmtiles per region per layer, added and removed
+# from the "Offline maps" page in SpiriConfig.
+services:
+  tileserver:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/offline-map:edge
+    restart: unless-stopped
+    volumes:
+      - offline-map:/data
+      # The host's name is the objects' base topic, not the container's.
+      - /etc/hostname:/etc/spirisynq_base_topic:ro
+    networks:
+      - spirisynq
+
+  # The same image: the page for the downloaded regions (server/manager.py).
+  # It only touches the files; the tile server picks up changes by itself.
+  manager:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/offline-map:edge
+    restart: unless-stopped
+    command: ["/opt/offline-map/manager.py"]
+    volumes:
+      - offline-map:/data
+    networks:
+      - spirisynq
+    labels:
+      spiriconfig.plugin.name: offline-map
+      spiriconfig.plugin.port: "8080"
+      spiriconfig.plugin.title: Offline maps
+      spiriconfig.plugin.icon: map
+
+volumes:
+  offline-map:
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true

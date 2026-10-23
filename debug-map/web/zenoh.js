@@ -4,8 +4,9 @@ import { Config, ConsolidationMode, Duration, Sample, open } from "@eclipse-zeno
 // websocket (Caddy's /zenoh), which is a zenoh client of the SDK router.
 //
 // The session opens on first use. zenoh-ts doesn't say when its websocket
-// drops, so a heartbeat notices, and every subscription is declared again
-// once a new session is up. Fires "status" when `status` changes.
+// drops, so a heartbeat notices, and every subscription and liveliness token
+// is declared again once a new session is up. Fires "status" when `status`
+// changes.
 
 const HEARTBEAT_MS = 3000;
 
@@ -127,20 +128,44 @@ export class Zenoh extends EventTarget {
     });
   }
 
+  // sub.subscriber is whatever has an undeclare(): a subscriber or a token.
   async #declare(session, sub) {
     try {
-      const subscriber = await session.declareSubscriber(sub.key, { handler: sub.handler });
+      const { key, handler } = sub;
+      const subscriber = await (sub.kind === "token"
+        ? session.liveliness().declareToken(key)
+        : sub.kind === "liveliness"
+          ? session.liveliness().declareSubscriber(key, { handler, history: true })
+          : session.declareSubscriber(key, { handler }));
       if (session === this.#session && this.#subs.has(sub)) sub.subscriber = subscriber;
       else subscriber.undeclare().catch(() => {});
     } catch (e) {
-      console.warn(`zenoh: can't subscribe to ${sub.key}`, e);
+      console.warn(`zenoh: can't declare ${sub.kind} ${sub.key}`, e);
     }
   }
 
   // Calls handler(sample) for every sample on key, across reconnects.
   // Returns a function that unsubscribes.
   subscribe(key, handler) {
-    const sub = { key, handler, subscriber: null };
+    return this.#add({ kind: "sample", key, handler });
+  }
+
+  // Calls handler(sample) for every liveliness token on key as it comes
+  // (a put) and goes (a delete), the ones already there included. After a
+  // reconnect they're all reported again. Returns a function that
+  // unsubscribes.
+  subscribeLiveliness(key, handler) {
+    return this.#add({ kind: "liveliness", key, handler });
+  }
+
+  // Declares a liveliness token, across reconnects. Returns a function that
+  // undeclares it.
+  token(key) {
+    return this.#add({ kind: "token", key });
+  }
+
+  #add(sub) {
+    sub.subscriber = null;
     this.#subs.add(sub);
     if (this.#session) this.#declare(this.#session, sub);
     else this.session();

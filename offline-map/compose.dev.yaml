@@ -1,0 +1,11 @@
+# Build from source instead of pulling:
+#   docker compose -f compose.yaml -f compose.dev.yaml up --build
+services:
+  tileserver:
+    image: sdk-offline-map:dev
+    build: server
+  manager:
+    image: sdk-offline-map:dev
+    # Published for trying the page without SpiriConfig.
+    ports:
+      - "127.0.0.1:8095:8080"

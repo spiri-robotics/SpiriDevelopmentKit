@@ -107,6 +107,11 @@ body[data-sidebar="hidden"] #sidebar { display: none; }
 .gz-label.following::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1 14 14 8 10.5 2 14Z' fill='%237aa2f7' stroke='black' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+/* A model's height above the ground, beside its drop line's foot. */
+.gz-height {
+  position: absolute; left: 0; top: 0; translate: 4px -50%; white-space: nowrap;
+  font-size: 11px; color: orange; text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
 #sidebar-expand {
   position: absolute; top: 12px; left: 12px; z-index: 100000; width: 32px; height: 32px;
   background: rgb(22 25 29 / 0.9); border-color: var(--line);

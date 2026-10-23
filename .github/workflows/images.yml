@@ -33,6 +33,8 @@ jobs:
             context: debug-map/web
           - name: zenoh-index
             context: debug-map/index
+          - name: offline-map
+            context: offline-map/server
           - name: sim-robot
             context: sim-robot/robot
           - name: ardupilot-sitl

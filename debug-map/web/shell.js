@@ -43,17 +43,31 @@ function storage(key) {
   };
 }
 
-// Map layers by id: anything with a `show` property. Visibility is remembered
-// per browser. Fires "change" when a layer is added or toggled.
+// Map layers by id: anything with a `show` property, in named sections.
+// Sections are listed in the order they're declared, with `empty` shown while
+// one has no layers. A layer's `info` is a line for its tooltip. Visibility
+// is remembered per browser. Fires "change" when a layer is added or toggled.
 export class Layers extends EventTarget {
   #items = new Map();
+  #sections = new Map();
   #saved = storage("layers");
   #shown = this.#saved.get();
 
-  add(id, title, layer) {
+  section(name, empty = "") {
+    this.#sections.set(name, empty);
+  }
+
+  add(id, title, layer, { section = "", info = "" } = {}) {
     layer.show = this.#shown[id] ?? layer.show;
-    this.#items.set(id, { id, title, layer });
+    if (!this.#sections.has(section)) this.#sections.set(section, "");
+    this.#items.set(id, { id, title, layer, section, info });
     this.dispatchEvent(new Event("change"));
+  }
+
+  // [{ name, empty, items }], in order.
+  sections() {
+    const items = [...this.#items.values()];
+    return [...this.#sections].map(([name, empty]) => ({ name, empty, items: items.filter((i) => i.section === name) }));
   }
 
   list() {

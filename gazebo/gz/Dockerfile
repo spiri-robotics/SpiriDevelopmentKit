@@ -1,6 +1,6 @@
 # Stock Gazebo Jetty from the OSRF apt repo -- already built with the zenoh
-# transport backend and the websocket server system -- plus ardupilot_gazebo,
-# which has no packages and is built from source.
+# transport backend -- plus ardupilot_gazebo, which has no packages and is
+# built from source.
 
 FROM ubuntu:24.04 AS gazebo
 

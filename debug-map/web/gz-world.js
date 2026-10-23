@@ -2,12 +2,16 @@ import { MercatorCoordinate } from "maplibre-gl";
 import {
   AmbientLight,
   BoxGeometry,
+  BufferGeometry,
+  Float32BufferAttribute,
   Camera,
   CapsuleGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
   Group,
+  Line,
+  LineBasicMaterial,
   Matrix4,
   Mesh,
   MeshLambertMaterial,
@@ -38,11 +42,18 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 // Z up; the camera's matrix places it on the map at <spherical_coordinates>.
 //
 // Each top-level model can carry a label: a DOM element kept over the model's
-// origin, so it's readable at any distance.
+// origin, so it's readable at any distance. A labelled model also gets a drop
+// line from its origin straight down to the ground, with its height above
+// that ground beside the line's foot.
+//
+// The models and the labels show and hide apart: `show` is the 3D models,
+// `showEntities` the labels, drop lines and heights.
 export class GazeboWorld {
   id = "gazebo-3d";
   type = "custom";
   renderingMode = "3d";
+  motionTimer = null;
+  lastMotion = 0;
 
   constructor() {
     this.map = null;
@@ -56,6 +67,8 @@ export class GazeboWorld {
     this.frames = new Map(); // entity id -> group
     this.roots = new Map(); // top-level model name -> group
     this.labels = new Map(); // top-level model name -> element
+    this.drops = new Map(); // top-level model name -> { line, tag }
+    this.dropMaterial = new LineBasicMaterial({ color: 0xffa500 });
     this.meshes = new Map(); // glTF url -> Promise of its scene
 
     // Gazebo's lights aren't carried over. Light from overhead, a little
@@ -64,7 +77,9 @@ export class GazeboWorld {
     sun.position.set(0.3, -0.4, 1);
     this.scene.add(sun, new AmbientLight(0xffffff, 0.6));
     this.world = new Group();
-    this.scene.add(this.world);
+    // Drop lines, apart from the models so they hide with the labels.
+    this.markers = new Group();
+    this.scene.add(this.world, this.markers);
   }
 
   onAdd(map, gl) {
@@ -74,6 +89,7 @@ export class GazeboWorld {
     this.renderer.outputEncoding = sRGBEncoding;
     this.overlay = document.createElement("div");
     this.overlay.className = "gz-labels";
+    this.overlay.hidden = !this.markers.visible;
     map.getCanvasContainer().append(this.overlay);
   }
 
@@ -87,13 +103,52 @@ export class GazeboWorld {
     // metres, so float precision holds at any zoom.
     this.camera.projectionMatrix.fromArray(defaultProjectionData.mainMatrix).multiply(this.origin);
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
+    this.placeDrops();
     this.renderer.resetState();
     this.renderer.render(this.scene, this.camera);
     this.placeLabels();
   }
 
+  // The ground's height in the world's ENU frame at a point: the terrain's,
+  // where there's terrain and it has loaded there; else the flat map's, z=0.
+  groundAt(x, y) {
+    if (this.onGround) return 0;
+    const at = new Vector3(x, y, 0).applyMatrix4(this.origin);
+    const lngLat = new MercatorCoordinate(at.x, at.y, 0).toLngLat();
+    const h = this.map.queryTerrainElevation(lngLat);
+    return h == null ? 0 : h - this.elevation;
+  }
+
+  // Runs before each frame: models move and terrain tiles load, both of which
+  // repaint.
+  placeDrops() {
+    const p = new Vector3();
+    for (const [name, { line }] of this.drops) {
+      p.setFromMatrixPosition(this.roots.get(name).matrix);
+      const ground = this.groundAt(p.x, p.y);
+      line.geometry.attributes.position.setXYZ(0, p.x, p.y, p.z);
+      line.geometry.attributes.position.setXYZ(1, p.x, p.y, ground);
+      line.geometry.attributes.position.needsUpdate = true;
+      line.geometry.computeBoundingSphere();
+      line.userData.height = p.z - ground;
+    }
+  }
+
   repaint() {
     this.map?.triggerRepaint();
+  }
+
+  // A repaint for motion, at most MOTION_FPS a second. Gazebo publishes poses
+  // at 60 Hz and a spinning rotor moves on every one; the camera moving still
+  // draws at the display's rate.
+  repaintMotion() {
+    if (!this.map || this.motionTimer) return;
+    const wait = Math.max(0, this.lastMotion + 1000 / MOTION_FPS - performance.now());
+    this.motionTimer = setTimeout(() => {
+      this.motionTimer = null;
+      this.lastMotion = performance.now();
+      this.map.triggerRepaint();
+    }, wait);
   }
 
   get show() {
@@ -102,6 +157,15 @@ export class GazeboWorld {
 
   set show(on) {
     this.world.visible = on;
+    this.repaint();
+  }
+
+  get showEntities() {
+    return this.markers.visible;
+  }
+
+  set showEntities(on) {
+    this.markers.visible = on;
     this.overlay && (this.overlay.hidden = !on);
     this.repaint();
   }
@@ -155,8 +219,30 @@ export class GazeboWorld {
     if (label) {
       this.labels.set(model.name, label);
       this.overlay?.append(label);
+      this.addDrop(model.name);
     }
     this.repaint();
+  }
+
+  addDrop(name) {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute("position", new Float32BufferAttribute(6, 3));
+    const line = new Line(geometry, this.dropMaterial);
+    line.frustumCulled = false;
+    this.markers.add(line);
+    const tag = document.createElement("div");
+    tag.className = "gz-height";
+    this.overlay?.append(tag);
+    this.drops.set(name, { line, tag });
+  }
+
+  removeDrop(name) {
+    const drop = this.drops.get(name);
+    if (!drop) return;
+    this.drops.delete(name);
+    this.markers.remove(drop.line);
+    drop.line.geometry.dispose();
+    drop.tag.remove();
   }
 
   removeModel(name) {
@@ -165,6 +251,7 @@ export class GazeboWorld {
     this.roots.delete(name);
     this.labels.get(name)?.remove();
     this.labels.delete(name);
+    this.removeDrop(name);
     this.world.remove(root);
     root.traverse((o) => {
       this.frames.delete(o.userData.gzId);
@@ -191,7 +278,7 @@ export class GazeboWorld {
     if (nearlyEqual(m, frame.matrix, 1e-4)) return false;
     frame.matrix.copy(m);
     frame.matrixWorldNeedsUpdate = true;
-    this.repaint();
+    this.repaintMotion();
     return true;
   }
 
@@ -271,16 +358,18 @@ export class GazeboWorld {
     if (!this.labels.size) return;
     const canvas = this.map.getCanvas();
     const [w, h] = [canvas.clientWidth, canvas.clientHeight];
-    const [p, f] = [new Vector4(), new Vector4()];
+    const p = new Vector4();
     const toScreen = (v) => [((v.x / v.w + 1) / 2) * w, ((1 - v.y / v.w) / 2) * h];
+    // The heading is turned on the ground, not by projecting a point ahead of
+    // the model: seen from in front or behind, that point lands on the model
+    // and its direction is noise. The map's bearing turns it, and its pitch
+    // shortens the part pointing into the screen.
+    const bearing = (this.map.getBearing() * Math.PI) / 180;
+    const tilt = Math.cos((this.map.getPitch() * Math.PI) / 180);
+    const [cb, sb] = [Math.cos(bearing), Math.sin(bearing)];
     for (const [name, label] of this.labels) {
       const root = this.roots.get(name);
-      p.set(0, 0, 0, 1).applyMatrix4(root.matrix);
-      // Its heading: the model's +X, level, a metre ahead.
-      const e = root.matrix.elements;
-      const len = Math.hypot(e[0], e[1]);
-      f.set(p.x + e[0] / len, p.y + e[1] / len, p.z, 1).applyMatrix4(this.camera.projectionMatrix);
-      p.applyMatrix4(this.camera.projectionMatrix);
+      p.set(0, 0, 0, 1).applyMatrix4(root.matrix).applyMatrix4(this.camera.projectionMatrix);
       // Behind the camera.
       if (p.w <= 0) {
         label.hidden = true;
@@ -289,14 +378,29 @@ export class GazeboWorld {
       label.hidden = false;
       const [x, y] = toScreen(p);
       label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-      // Pointing straight up or down, it has no heading; keep the last.
-      if (len > 1e-6 && f.w > 0) {
-        const [fx, fy] = toScreen(f);
-        label.style.setProperty("--heading", `${Math.atan2(fx - x, y - fy).toFixed(3)}rad`);
+      // Its heading is the model's +X (east and north parts); pointing
+      // straight up or down, it has none, so keep the last.
+      const [east, north] = [root.matrix.elements[0], root.matrix.elements[1]];
+      if (Math.hypot(east, north) > 1e-6) {
+        const right = east * cb - north * sb;
+        const ahead = (east * sb + north * cb) * tilt;
+        label.style.setProperty("--heading", `${Math.atan2(right, ahead).toFixed(3)}rad`);
       }
+    }
+    // Heights, beside the drop line's foot.
+    for (const { line, tag } of this.drops.values()) {
+      const pos = line.geometry.attributes.position;
+      p.set(pos.getX(1), pos.getY(1), pos.getZ(1), 1).applyMatrix4(this.camera.projectionMatrix);
+      tag.hidden = p.w <= 0;
+      if (tag.hidden) continue;
+      const [x, y] = toScreen(p);
+      tag.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      tag.textContent = `${line.userData.height.toFixed(1)} m`;
     }
   }
 }
+
+const MOTION_FPS = 30;
 
 const MESHES = [".dae", ".stl", ".obj"];
 

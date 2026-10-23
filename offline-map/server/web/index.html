@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Offline maps</title>
+  <link rel="stylesheet" href="vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="panel">
+    <header>
+      <h1>Offline maps</h1>
+      <span id="status" class="muted"></span>
+    </header>
+
+    <section>
+      <h2>Downloaded</h2>
+      <div id="layers"></div>
+    </section>
+
+    <section id="add">
+      <h2>Add a region</h2>
+      <p class="muted small">Cut from public planet builds. Needs the internet. OpenStreetMap below z15 has almost no buildings; lower zooms suit large areas.</p>
+      <div class="row">
+        <button id="draw" type="button">Draw a box</button>
+        <button id="use-view" type="button">Use this view</button>
+      </div>
+      <div id="bbox" class="muted small">No area chosen.</div>
+      <label class="field">Name <input id="name" placeholder="citadel-hill" autocomplete="off" spellcheck="false"></label>
+      <div id="add-layers"></div>
+      <div id="estimate" class="small"></div>
+      <button id="download" type="button" class="primary" disabled>Download</button>
+      <div id="add-error" class="error small"></div>
+    </section>
+
+    <section id="jobs-section" hidden>
+      <h2>Downloads</h2>
+      <div id="jobs"></div>
+    </section>
+
+    <section>
+      <h2>Upload</h2>
+      <p class="muted small">A .pmtiles file cut elsewhere, for an appliance without internet.</p>
+      <label class="field">Layer <select id="up-layer"></select></label>
+      <label class="field">Name <input id="up-name" placeholder="region name" autocomplete="off" spellcheck="false"></label>
+      <input id="up-file" type="file" accept=".pmtiles">
+      <button id="upload" type="button" disabled>Upload</button>
+      <progress id="up-progress" max="1" value="0" hidden></progress>
+      <div id="up-error" class="error small"></div>
+    </section>
+  </aside>
+  <main id="map"></main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

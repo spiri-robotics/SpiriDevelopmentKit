@@ -1,7 +1,4 @@
 :8080 {
-	handle /ws {
-		reverse_proxy {$GZ_WEBSOCKET:gz:9002}
-	}
 	# Zenoh's remote API, for zenoh-ts in the page; see zenoh-ws in compose.yaml.
 	handle /zenoh {
 		reverse_proxy {$ZENOH_WS:zenoh-ws:10000}

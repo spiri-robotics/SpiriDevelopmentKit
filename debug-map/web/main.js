@@ -3,19 +3,22 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // MapLibre finds its worker next to its own module, which bundling breaks;
 // Vite bundles the worker on its own and gives its URL.
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { Topic, Transport } from "gzweb";
 import * as gzServices from "./gz-services.js";
+import { Gazebo } from "./gz-transport.js";
 import { GazeboWorld } from "./gz-world.js";
+import { addZenohProtocol, startOfflineLayers } from "./offline-map.js";
 import { Actions, Entities, Layers, startShell } from "./shell.js";
 import { Zenoh } from "./zenoh.js";
 
 setWorkerUrl(workerUrl);
 
 // A MapLibre map, with terrain. Imagery and terrain stream from public tile
-// servers until the appliance has its own tile server; offline, the map is a
-// plain background with the Gazebo layer on it. Robots come from Gazebo's websocket for now; they
-// move to SpiriSynq telemetry once robots publish it (see docs/architecture.md,
-// "The map: MapLibre").
+// servers, and from the appliance's offline-map over zenoh where it has
+// regions (offline-map.js); with neither, the map is a plain background with
+// the Gazebo layers on it. Robots come from Gazebo's
+// topics over zenoh for now (gz-transport.js); they move to SpiriSynq
+// telemetry once robots publish it (see docs/architecture.md, "The map:
+// MapLibre").
 //
 // MapLibre draws a frame only when something changes: a camera move, a tile,
 // or a layer asking (gz-world.js asks when a model visibly moves).
@@ -83,9 +86,8 @@ window.map = map;
 map.addControl(new NavigationControl({ visualizePitch: true }), "top-right");
 map.addControl(new TerrainControl({ source: "terrain", exaggeration: 1 }), "top-right");
 
-// The Gazebo layer: the world's 3D models (see gz-world.js), labelled so they
-// stay findable from afar. Meshes come over HTTP from the asset server, not
-// the websocket.
+// The Gazebo layers: the world's 3D models (see gz-world.js), and labels so
+// they stay findable from afar. Meshes come over HTTP from the asset server.
 const world3d = new GazeboWorld();
 const entities = new Entities();
 
@@ -100,10 +102,11 @@ const styleLayer = (...ids) => ({
 });
 const layers = new Layers();
 
-// Zenoh, through Caddy's /zenoh; connects when an applet first uses it.
+// Zenoh, through Caddy's /zenoh. The Gazebo layers use it from the start.
 const zenohUrl = new URL("zenoh", window.location.href);
 zenohUrl.protocol = zenohUrl.protocol === "https:" ? "wss:" : "ws:";
 const zenoh = new Zenoh(zenohUrl.href);
+addZenohProtocol(zenoh);
 
 // Changing the world, for applets, over zenoh: any model moves through
 // Gazebo's set_pose; a robot resets through its sim-agent, which respawns it.
@@ -136,8 +139,8 @@ const gz = {
 startShell({ map, layers, actions: new Actions(), entities, zenoh, gz, home: () => origin && resetView() });
 
 // Gazebo poses are metres in the world's ENU frame, anchored to the map by the
-// world's <spherical_coordinates>. Gazebo doesn't send those over the websocket,
-// so read them from the world SDF through the asset server.
+// world's <spherical_coordinates>. Gazebo doesn't publish those, so read them
+// from the world SDF through the asset server.
 let origin = null; // [lng, lat]
 // ENU metres to [lng, lat] and back, near the origin.
 let enuToLngLat = null;
@@ -254,7 +257,7 @@ function removeModel(name) {
   if (entity) entities.remove(entity);
 }
 
-function setPose(pose) {
+function applyPose(pose) {
   // dynamic_pose/info also carries links, by entity id; world3d places both.
   if (!world3d.setPose(pose)) return;
   const tracked = entities.tracked;
@@ -270,34 +273,87 @@ function showStatus(text, up) {
   status.className = up ? "up" : "down";
 }
 
-// Relative to this page, so it works both at / and behind SpiriConfig's
-// /plugin/<name>/ prefix. Caddy forwards /ws to Gazebo's websocket server.
-const wsUrl = new URL("ws", window.location.href);
-wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
-const transport = new Transport();
+// Gazebo, over zenoh (gz-transport.js).
+const gazebo = new Gazebo(zenoh);
 
-// Connect, and reconnect whenever the socket drops. A failed socket reports
-// "error" then "disconnected"; the timer makes that one retry, not two.
-let retry = null;
-let firstTry = true;
-function reconnect() {
-  if (retry) return;
-  retry = setTimeout(() => {
-    retry = null;
-    transport.connect(wsUrl.href);
-  }, firstTry ? 0 : 2000);
-  firstTry = false;
+function showConnection() {
+  if (zenoh.status !== "up") showStatus("connecting…", false);
+  else if (!gazebo.world) showStatus("no Gazebo world", false);
+  else if (gz.world) showStatus(`connected: ${gz.world}`, true);
+}
+zenoh.addEventListener("status", showConnection);
+
+// The world's topics, while it's up; a function that drops them.
+let unsubscribe = null;
+
+function dropWorld() {
+  unsubscribe?.();
+  unsubscribe = null;
+  gz.world = null;
+  for (const name of [...entities.values.map((e) => e.id), ...planes.keys()]) removeModel(name);
+  idToName.clear();
+  world3d.clear();
+}
+
+// Loads the world that's up, or clears the map when it goes. A restarted
+// Gazebo is a new world. Each load is numbered, so one overtaken by the next
+// stops where it is.
+let loads = 0;
+async function loadWorld() {
+  const load = ++loads;
+  dropWorld();
+  const world = gazebo.world;
+  showConnection();
+  if (!world) return;
+  try {
+    await loadOrigin(world);
+  } catch (e) {
+    return showStatus(`no georeference: ${e.message}`, false);
+  }
+  if (load !== loads) return;
+
+  // Subscribe first, so a model added while the scene is fetched isn't missed;
+  // adding one twice is harmless. Scene lights aren't used: gz-world.js lights
+  // the models.
+  const subs = [
+    gazebo.subscribe(`/world/${world}/scene/info`, "gz.msgs.Scene", (msg) => msg.model?.forEach(addModel)),
+    gazebo.subscribe(`/world/${world}/scene/deletion`, "gz.msgs.UInt32_V", (msg) =>
+      msg.data?.forEach((id) => removeModel(idToName.get(id))),
+    ),
+    gazebo.subscribe(`/world/${world}/dynamic_pose/info`, "gz.msgs.Pose_V", (msg) => msg.pose?.forEach(applyPose)),
+  ];
+  unsubscribe = () => subs.forEach((drop) => drop());
+  let scene;
+  try {
+    scene = await gazebo.request(`/world/${world}/scene/info`, "gz.msgs.Scene");
+  } catch (e) {
+    return showStatus(`${world}: ${e.message}`, false);
+  }
+  if (load !== loads) return;
+  scene.model?.forEach(addModel);
+  gz.world = world;
+  showConnection();
+  resetView();
 }
 
 map.on("load", () => {
   map.addLayer(world3d);
   world3d.setTerrain(!!map.getTerrain());
   map.on("terrain", () => world3d.setTerrain(!!map.getTerrain()));
-  layers.add("satellite", "Satellite", styleLayer("satellite"));
-  layers.add("osm", "OpenStreetMap", styleLayer("osm"));
-  layers.add("hillshade", "Hillshade", styleLayer("hillshade"));
-  layers.add("buildings", "3D buildings", styleLayer("buildings"));
-  layers.add("gazebo", "Gazebo", {
+  // Sections top to bottom as they're drawn.
+  layers.section("Simulation");
+  layers.section("Online");
+  layers.section("Offline", "None found on zenoh.");
+  const online = { section: "Online" };
+  layers.add("satellite", "Satellite", styleLayer("satellite"), online);
+  layers.add("osm", "OpenStreetMap", styleLayer("osm"), online);
+  layers.add("hillshade", "Hillshade", styleLayer("hillshade"), online);
+  layers.add("buildings", "3D buildings", styleLayer("buildings"), online);
+  startOfflineLayers(map, zenoh, layers);
+  // Gazebo, as two layers: the world's 3D models and ground outlines, and
+  // its entities' labels, drop lines and heights.
+  const sim = { section: "Simulation" };
+  layers.add("gazebo-3d", "Gazebo 3D data", {
     get show() {
       return world3d.show;
     },
@@ -305,43 +361,16 @@ map.on("load", () => {
       world3d.show = on;
       styleLayer("planes-fill", "planes-line").show = on;
     },
-  });
+  }, sim);
+  layers.add("gazebo-entities", "Gazebo entities", {
+    get show() {
+      return world3d.showEntities;
+    },
+    set show(on) {
+      world3d.showEntities = on;
+    },
+  }, sim);
 
-  transport.getConnectionStatus().subscribe(async (s) => {
-    if (s !== "ready") {
-      showStatus(s === "connected" ? "loading world…" : s === "disconnected" ? "connecting…" : s, false);
-      if (s === "disconnected" || s === "error") {
-        gz.world = null;
-        for (const name of [...entities.values.map((e) => e.id), ...planes.keys()]) removeModel(name);
-        idToName.clear();
-        world3d.clear();
-        reconnect();
-      }
-      return;
-    }
-    const world = transport.getWorld();
-    try {
-      await loadOrigin(world);
-    } catch (e) {
-      showStatus(`no georeference: ${e.message}`, false);
-      return;
-    }
-    gz.world = world;
-    showStatus(`connected: ${world}`, true);
-    resetView();
-
-    // Ready means the first scene message has arrived; it lists the models so
-    // far. Its lights aren't used: gz-world.js lights the models.
-    const scene = transport.sceneInfo$.getValue();
-    scene?.model?.forEach(addModel);
-
-    const available = new Set(transport.getAvailableTopics().map((t) => t.topic));
-    // gzweb's subscribe throws on a topic Gazebo doesn't advertise.
-    const subscribe = (name, cb) => available.has(name) && transport.subscribe(new Topic(name, cb));
-    subscribe(`/world/${world}/scene/info`, (msg) => msg?.model?.forEach(addModel));
-    subscribe(`/world/${world}/scene/deletion`, (msg) =>
-      msg?.data?.forEach((id) => removeModel(idToName.get(id))),
-    );
-    subscribe(`/world/${world}/dynamic_pose/info`, (msg) => msg?.pose?.forEach(setPose));
-  });
+  gazebo.addEventListener("world", loadWorld);
+  loadWorld();
 });

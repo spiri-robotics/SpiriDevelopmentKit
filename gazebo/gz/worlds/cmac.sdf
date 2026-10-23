@@ -20,12 +20,6 @@
     </plugin>
     <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
     <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
-    <!-- Feeds the map viewer; reached only through the plugin's reverse proxy. -->
-    <plugin filename="gz-sim-websocket-server-system" name="gz::sim::systems::WebsocketServer">
-      <port>9002</port>
-      <publication_hz>30</publication_hz>
-      <max_connections>-1</max_connections>
-    </plugin>
 
     <!-- Every robot's SITL uses this as --home; see docs/architecture.md.
          The map ignores elevation and heading. -->

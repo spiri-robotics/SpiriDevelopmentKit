@@ -9,7 +9,6 @@ services:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/debug-map:edge
     restart: unless-stopped
     environment:
-      GZ_WEBSOCKET: gazebo:9002
       GZ_ASSETS: gazebo-assets:9003
       ZENOH_WS: zenoh-ws:10000
     depends_on:

@@ -13,6 +13,7 @@ to run them from source. Released versions install from
 | --- | --- |
 | [`gazebo`](gazebo/) | The simulated world, with a choice of worlds. |
 | [`debug-map`](debug-map/) | A globe in SpiriConfig showing the world and everything on zenoh. |
+| [`offline-map`](offline-map/) | Map tiles over zenoh from downloaded regions, for maps offline. |
 | [`sim-robot`](sim-robot/) | A simulated Mu: its own docker daemon and SpiriConfig. |
 | [`ardupilot-sitl`](ardupilot-sitl/) | Inside a robot: its flight controller, ArduCopter SITL. |
 | [`sim-agent`](sim-agent/) | Inside a robot: puts its airframe into the world. |
