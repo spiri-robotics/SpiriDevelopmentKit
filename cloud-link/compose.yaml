@@ -29,6 +29,15 @@
 # own addresses, NetBird's included, relaying the H.264 untouched. Nobody
 # outside can reach it until netbird has joined the VPN; NetBird's ACLs let
 # only the organization's Frigate in.
+#
+# VPN: netbird puts the robot on its organization's NetBird VPN, as the link
+# configures it, and stays off without one. It watches the env file rather
+# than reading it through env_file, so linking and unlinking take effect
+# within seconds, without a restart. Unlinking deletes the robot's peer in the
+# cloud, and this takes the tunnel down. Joining the VPN grants nothing by
+# itself: each cloud service still checks the robot's own access. Host
+# networking puts the VPN interface (wt0) in the robot's own network, so the
+# organization's peers reach the robot itself, at its NetBird address.
 x-spiri-settings:
   - env: CLOUD_LINK_CAMERA
     label: Camera
@@ -100,8 +109,24 @@ services:
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
 
+  netbird:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/netbird:edge
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+    devices:
+      - /dev/net/tun
+    volumes:
+      # The peer's WireGuard key and NetBird's state.
+      - netbird:/var/lib/netbird
+      - /var/lib/spiri-cloud:/spiri-cloud:ro
+
 volumes:
   cloud-link:
+  netbird:
 
 networks:
   spirisynq:

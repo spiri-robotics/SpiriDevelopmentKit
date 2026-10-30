@@ -14,10 +14,10 @@ services:
         Appstore-Spiri_development/zenoh-router
         SpiriDevelopmentKit/sim-agent
         SpiriDevelopmentKit/mavlink-router
+        SpiriDevelopmentKit/spirimav
         SpiriDevelopmentKit/ardupilot-sitl
         SpiriDevelopmentKit/sim-camera-ingress
         SpiriDevelopmentKit/cloud-link
-        SpiriDevelopmentKit/netbird
       # Start them with their compose.dev.yaml, which builds the images.
       ROBOT_DEV: "1"
     volumes:

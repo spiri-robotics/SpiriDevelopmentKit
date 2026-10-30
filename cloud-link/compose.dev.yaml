@@ -4,3 +4,6 @@ services:
   cloud-link:
     image: sdk-cloud-link:dev
     build: link
+  netbird:
+    image: sdk-netbird:dev
+    build: netbird

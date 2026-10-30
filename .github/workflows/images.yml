@@ -48,7 +48,7 @@ jobs:
           - name: cloud-link
             context: cloud-link/link
           - name: netbird
-            context: netbird/client
+            context: cloud-link/netbird
     steps:
       - uses: actions/checkout@v4
 
