@@ -53,7 +53,7 @@ def log(*args) -> None:
     print("sim-agent:", *args, flush=True)
 
 
-# -- the three protobuf messages we need, encoded by hand ---------------------
+# -- the protobuf messages we need, encoded and decoded by hand ---------------
 
 
 def _varint(value: int) -> bytes:
@@ -92,6 +92,47 @@ def boolean(payload: bytes) -> bool:
     return payload.endswith(b"\x10\x01")
 
 
+def _read_varint(data: bytes, i: int) -> tuple[int, int]:
+    value = shift = 0
+    while True:
+        byte = data[i]
+        i += 1
+        value |= (byte & 0x7F) << shift
+        shift += 7
+        if not byte & 0x80:
+            return value, i
+
+
+def _fields(data: bytes):
+    """(field, value) for each field of a message; value is bytes when length-delimited."""
+    i = 0
+    while i < len(data):
+        key, i = _read_varint(data, i)
+        wire = key & 7
+        if wire == 0:
+            value, i = _read_varint(data, i)
+        elif wire == 2:
+            size, i = _read_varint(data, i)
+            value, i = data[i : i + size], i + size
+        elif wire in (1, 5):
+            size = 8 if wire == 1 else 4
+            value, i = data[i : i + size], i + size
+        else:
+            raise ValueError(f"protobuf wire type {wire}")
+        yield key >> 3, value
+
+
+def model_names(payload: bytes) -> set[str]:
+    """The top-level models in a gz.msgs.Scene: model = 9, each a Model with name = 2."""
+    return {
+        name.decode()
+        for field, model in _fields(payload)
+        if field == 9
+        for f, name in _fields(model)
+        if f == 2
+    }
+
+
 # -- talking to the world -------------------------------------------------------
 
 
@@ -120,10 +161,44 @@ def model_sdf() -> str:
     )
 
 
+def models(session: zenoh.Session, world: str) -> set[str] | None:
+    """The world's models by name, or None if it didn't answer."""
+    key = f"@/{PARTITION}@/world/{world}/scene/info"
+    for reply in session.get(key, payload=b"", timeout=5.0):
+        if reply.ok is not None:
+            return model_names(reply.ok.payload.to_bytes())
+    return None
+
+
+def remove(session: zenoh.Session, world: str, timeout: float = 10.0) -> bool:
+    """Remove our model, and wait until the world has.
+
+    remove/blocking answers as soon as the request is queued, true whether or
+    not the model exists, and the world removes it only at the end of a step. A
+    create sent before then is refused as a duplicate, and the removal is lost
+    with it: the model stays, reset, with a second set of plugins and sensors
+    loaded into it. So only ever create once the world no longer lists it.
+    """
+    names = models(session, world)
+    if names is None or NAME not in names:
+        return names is not None
+    call(session, world, "remove/blocking", entity_model(NAME))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        time.sleep(0.2)
+        names = models(session, world)
+        if names is not None and NAME not in names:
+            log(f"removed a leftover {NAME}")
+            return True
+    return False
+
+
 def spawn(session: zenoh.Session, world: str) -> bool:
-    removed = call(session, world, "remove/blocking", entity_model(NAME))
-    if removed:
-        log(f"removed a leftover {NAME}")
+    if not remove(session, world):
+        # A stalled world (e.g. waiting in lockstep on a SITL that's gone)
+        # never gets to the end of a step; try again later.
+        log(f"spawning {NAME} failed: the world didn't remove the old one")
+        return False
     created = call(session, world, "create/blocking", entity_factory(model_sdf(), NAME), timeout=15.0)
     if created:
         log(f"spawned {NAME} into {world} (FDM port {9002 + 10 * INDEX})")
