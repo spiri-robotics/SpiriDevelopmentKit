@@ -43,6 +43,9 @@ import "./synq-frames.css";
 // links, and the pose's 90% accuracy, also drawn as a cylinder around the
 // frame. Clicking again closes it.
 //
+// A point -- a pose without an orientation, such as a region of interest --
+// has a place but no facing: it's a ball, with no arrow, fin or angles.
+//
 // Poses are ECEF, so heights are above the WGS84 ellipsoid, and are drawn as
 // if above sea level, as the map's terrain is: right for SITL, which reports
 // no geoid separation, and too low by the local separation (about 21 m at
@@ -69,6 +72,8 @@ const ARROW = [
   new SphereGeometry(0.07, 16, 8),
 ];
 const FIN = new BoxGeometry(0.4, 0.015, 0.16).translate(0.3, 0, -0.1);
+const POINT = new SphereGeometry(0.15, 20, 10);
+const UNTURNED = new Quaternion();
 
 // !Link and !RootFrame are kept apart; other tags load as plain values.
 const TAGS = [
@@ -83,10 +88,11 @@ const linkOf = (x) => (typeof x?.link === "string" ? x.link : null);
 function toPose(v) {
   if (!v?.offset) return null;
   const o = v.offset;
-  const q = v.orientation ?? {};
+  const q = v.orientation;
   return {
     offset: new Vector3(o.x ?? 0, o.y ?? 0, o.z ?? 0),
-    q: new Quaternion(q.x ?? 0, q.y ?? 0, q.z ?? 0, q.w ?? 1).normalize(),
+    // null for a point
+    q: q ? new Quaternion(q.x ?? 0, q.y ?? 0, q.z ?? 0, q.w ?? 1).normalize() : null,
     accuracy: v.accuracy ?? null,
   };
 }
@@ -312,7 +318,7 @@ export class SynqFrames {
     const placed = [...this.frames.values()].filter((f) => f.pose);
     for (const f of placed) {
       [f.lat, f.lon, f.h] = geodetic(f.pose.offset);
-      f.world = angles(levelFrame(f.lat, f.lon, "ned").invert().multiply(f.pose.q));
+      f.world = f.pose.q && angles(levelFrame(f.lat, f.lon, "ned").invert().multiply(f.pose.q));
     }
     this.arrows.clear();
     for (const child of this.lines.children) child.geometry.dispose();
@@ -326,7 +332,7 @@ export class SynqFrames {
     for (const f of placed) {
       const p = MercatorCoordinate.fromLngLat([f.lon, f.lat], f.h - ground);
       f.at = new Vector3((p.x - a.x) / s, -(p.y - a.y) / s, (p.z - a.z) / s);
-      f.inScene = levelFrame(f.lat, f.lon, "enu").invert().multiply(f.pose.q);
+      f.inScene = f.pose.q ? levelFrame(f.lat, f.lon, "enu").invert().multiply(f.pose.q) : UNTURNED;
     }
 
     for (const f of placed) {
@@ -334,7 +340,8 @@ export class SynqFrames {
       arrow.matrixAutoUpdate = false;
       arrow.userData.frame = f;
       const material = this.isOpen(f) ? this.openMaterial : this.arrowMaterial;
-      arrow.add(...ARROW.map((g) => new Mesh(g, material)), new Mesh(FIN, this.finMaterial));
+      if (f.pose.q) arrow.add(...ARROW.map((g) => new Mesh(g, material)), new Mesh(FIN, this.finMaterial));
+      else arrow.add(new Mesh(POINT, material));
       this.arrows.add(arrow);
     }
 
@@ -449,20 +456,20 @@ export class SynqFrames {
   // An open label's details, as rows of [class, text] pieces: its class,
   // angles, mount, accuracy, place and links.
   details(f) {
-    const [roll, pitch, yaw] = f.world;
-    const rows = [
-      [["cls", f.cls]],
-      [["k", "hdg "], ["", deg(yaw)], ["k", "  pitch "], ["", deg(pitch)], ["k", "  roll "], ["", deg(roll)]],
-    ];
+    const rows = [[["cls", f.cls]]];
+    if (f.world) {
+      const [roll, pitch, yaw] = f.world;
+      rows.push([["k", "hdg "], ["", deg(yaw)], ["k", "  pitch "], ["", deg(pitch)], ["k", "  roll "], ["", deg(roll)]]);
+    } else rows.push([["k", "a point: no facing"]]);
     if (f.parent?.root) rows.push([["k", "in "], ["", f.parent.root]]);
     else if (f.mount) {
-      const [r, p, y] = angles(f.mount.q);
       const o = f.mount.offset;
       const parent = this.frames.has(f.parent.link) ? shortName(f.parent.link, f.topic) : `${f.parent.link} (not found)`;
-      rows.push(
-        [["k", "in "], ["", parent], ["k", ": "], ["", `(${m(o.x)}, ${m(o.y)}, ${m(o.z)})`], ["k", " m"]],
-        [["k", "yaw "], ["", deg(y)], ["k", "  pitch "], ["", deg(p)], ["k", "  roll "], ["", deg(r)]],
-      );
+      rows.push([["k", "in "], ["", parent], ["k", ": "], ["", `(${m(o.x)}, ${m(o.y)}, ${m(o.z)})`], ["k", " m"]]);
+      if (f.mount.q) {
+        const [r, p, y] = angles(f.mount.q);
+        rows.push([["k", "yaw "], ["", deg(y)], ["k", "  pitch "], ["", deg(p)], ["k", "  roll "], ["", deg(r)]]);
+      }
     }
     const acc = f.pose.accuracy;
     const fmt = (x) => (x == null ? "?" : `${m(x)} m`);
