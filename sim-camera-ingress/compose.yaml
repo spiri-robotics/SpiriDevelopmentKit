@@ -14,8 +14,11 @@ services:
       - spirisynq
     environment:
       # The robot's name, from the environment of its SpiriConfig: the model
-      # sim-agent spawns is named after it, and so is its camera's topic.
+      # sim-agent spawns is named after it, and its camera's topic is under
+      # it. camera1 is the camera on gimbal 1 (ArduPilot's mount 1), the
+      # default camera everything else looks for: <robot>/camera1.
       SPIRICAMERA_SOURCE: gz://model/${ROBOT_NAME:-mu-1}/gimbal/image
+      SPIRICAMERA_TOPIC: camera1
       SPIRI_SYNQ_BASE_TOPIC: ${ROBOT_NAME:-mu-1}
       SPIRICAMERA_QUALITY: ${QUALITY:-80}
       SPIRICAMERA_FRAMERATE: ${FRAMERATE:-10}

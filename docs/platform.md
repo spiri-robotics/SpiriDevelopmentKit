@@ -103,7 +103,7 @@ class Counter(SyncableObject):
 ```
 
 Every object's topic starts with the name of the robot that publishes it,
-such as `mu-1/camera`. An app can say `./camera` and SpiriSynq fills in the
+such as `mu-1/camera1`. An app can say `./camera1` and SpiriSynq fills in the
 robot's name. Objects advertise themselves, so you can find every camera, or
 every object of any class, without knowing in advance where it is.
 

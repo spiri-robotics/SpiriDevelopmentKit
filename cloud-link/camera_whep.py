@@ -3,7 +3,7 @@
 The camera is mirrored, not consumed: a read-only view of the camera named
 by CLOUD_LINK_CAMERA, so nothing new is published, and each frame the camera
 already encoded is turned into H.264 once, by SpiriCamera's WebRTC track.
-./camera is relative to the base topic (the robot's name), which SpiriSynq
+./camera1 is relative to the base topic (the robot's name), which SpiriSynq
 expands itself from 0.4.0.
 
 The mirror is made on the first request rather than at start, so this runs
@@ -18,7 +18,7 @@ import uvicorn
 from SpiriCamera.camera import Camera
 from SpiriCamera.whep import create_whep_app
 
-TOPIC = os.environ.get("CLOUD_LINK_CAMERA") or "./camera"
+TOPIC = os.environ.get("CLOUD_LINK_CAMERA") or "./camera1"
 PORT = int(os.environ.get("CAMERA_WHEP_PORT", "8889"))
 
 _lock = threading.Lock()

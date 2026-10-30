@@ -30,6 +30,8 @@ services:
       SPIRI_MAV_TARGET_SYSID: ${ROBOT_SYSID:-1}
       SPIRI_MAV_MAVLINK_URL: tcp:host.docker.internal:5760
       SPIRI_MAV_SYSID: "254"
+      # Gimbal 1 carries the robot's first camera (sim-camera-ingress).
+      SPIRI_MAV_GIMBAL_CAMERAS: '{"1": ["${ROBOT_NAME:-mu-1}/camera1"]}'
 
 networks:
   spirisynq:

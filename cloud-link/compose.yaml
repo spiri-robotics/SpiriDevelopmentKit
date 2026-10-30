@@ -43,8 +43,8 @@ x-spiri-settings:
     label: Camera
     help: >-
       The SpiriSynq camera Spiri Cloud's Frigate is shown, by topic.
-      ./camera means this robot's own camera topic, <robot>/camera.
-    default: ./camera
+      ./camera1 means this robot's first camera, <robot>/camera1.
+    default: ./camera1
   - env: CLOUD_LINK_URL
     label: Cloud address
     help: >-
@@ -92,7 +92,7 @@ services:
     # A mirror of the camera, served as WHEP; see camera_whep.py.
     entrypoint: ["python", "/opt/camera-whep/camera_whep.py"]
     environment:
-      CLOUD_LINK_CAMERA: ${CLOUD_LINK_CAMERA:-./camera}
+      CLOUD_LINK_CAMERA: ${CLOUD_LINK_CAMERA:-./camera1}
     volumes:
       - ./camera_whep.py:/opt/camera-whep/camera_whep.py:ro
       # The host's name is the base topic, which ./ is relative to.

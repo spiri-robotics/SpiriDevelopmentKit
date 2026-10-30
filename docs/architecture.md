@@ -188,8 +188,8 @@ NetBird address; the contract has one path per camera, and `camera` is the
 main one. cloud-link serves it, with two more services:
 
 - `camera-whep` (`cloud-link/camera_whep.py`, on the SpiriCamera image)
-  mirrors the camera named in cloud-link's *Camera* setting (`./camera`,
-  i.e. `<robot>/camera`, by default) and serves it through SpiriCamera's
+  mirrors the camera named in cloud-link's *Camera* setting (`./camera1`,
+  i.e. `<robot>/camera1`, by default) and serves it through SpiriCamera's
   WHEP app, only on the robot's loopback. A mirror publishes nothing of its
   own, and each JPEG the camera publishes is encoded to H.264 once. It's a
   zenoh app, so it stays on `spirisynq`: only the external half of the
@@ -205,9 +205,8 @@ main one. cloud-link serves it, with two more services:
 So no camera app changes for Spiri Cloud. Video is the one thing that leaves a
 robot outside zenoh, and NetBird's ACLs, not the router, are its gate. With a
 relay in the middle the camera's adaptive bitrate doesn't see the viewer's
-link: the camera's viewer is MediaMTX, on loopback. Nothing publishes at
-`<robot>/camera` yet, so in the sim the setting has to name the gimbal
-camera's own topic for now.
+link: the camera's viewer is MediaMTX, on loopback. In the sim,
+`sim-camera-ingress` publishes the gimbal camera at `<robot>/camera1`.
 
 ## Gazebo and ArduPilot
 
