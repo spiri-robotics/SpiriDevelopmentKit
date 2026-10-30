@@ -26,19 +26,19 @@ Leave it running, and open <http://localhost:8337>.
 `127.0.0.1`. Don't combine it with `SPIRICONFIG_HOST=0.0.0.0`: anyone on your
 network would control your docker daemon.
 
-## 2. Add the app stores
+## 2. Add the appsources
 
 You need two. **Appsource-Spiri-Simulation** has the zenoh router. **This
 repo** has everything else, until the next release puts it in the appsource
 too.
 
-Add the appsource from the app store page (**Add store**), or from a shell:
+Add the appsource in SpiriConfig (**Add store**), or from a shell:
 
 ```console
 $ uvx spiriconfig appstore add https://github.com/spiri-robotics/Appsource-Spiri-Simulation
 ```
 
-Add this repo by linking a checkout into SpiriConfig's store directory. Use a
+Add this repo by linking a checkout into SpiriConfig's appsources directory. Use a
 link, not **Add store**: apps installed through the link run your working
 tree, so your edits take effect without pulling anything.
 
@@ -50,12 +50,12 @@ $ ln -s "$PWD/SpiriDevelopmentKit" ~/.local/share/spiriconfig/stores/SpiriDevelo
 
 **Don't press Update on an app from SpiriDevelopmentKit.** Update commits every
 edit in the checkout and merges its upstream branch into yours. Use git
-yourself. Removing the store only deletes the link.
+yourself. Removing the appsource only deletes the link.
 
 ## 3. Start the world
 
-Install three apps, in this order. Both stores have a `gazebo`, so name the
-store:
+Install three apps, in this order. Both appsources have a `gazebo`, so name the
+appsource:
 
 ```console
 $ uvx spiriconfig appstore install Appsource-Spiri-Simulation/zenoh-router
@@ -130,17 +130,17 @@ $ uvx spiriconfig docker up mu-1 --dev
 
 The robot is a computer of its own: a docker daemon and a SpiriConfig, like a
 real Mu's. On its first boot it installs seven apps into itself, and builds
-six of them, which takes a few minutes:
+five of them, which takes a few minutes:
 
 | App inside the robot | What it does | On a real Mu |
 | --- | --- | --- |
 | `zenoh-router` | The Mu's own router, joined to the world's | the same app |
 | `sim-agent` | Puts the robot's airframe into the world, and back after the world restarts | nothing: a real Mu has a body |
 | `mavlink-router` | The robot's MAVLink endpoint, tcp 5760: QGroundControl and the robot's own apps connect to the flight controller through it at once | the same app |
+| `spirimav` | The robot on SpiriSynq: its state, commands, and frames (origin, home, gimbals, and the region of interest QGroundControl sets), drawn on the debug map | the same app |
 | `ardupilot-sitl` | The flight controller: ArduCopter SITL, flying the airframe in Gazebo | the flight controller board |
 | `sim-camera-ingress` | The gimbal camera's picture, on SpiriSynq. Idle without *Gimbal camera* | `camera-ingress`, from the real camera |
-| `cloud-link` | Links the robot to a Spiri Cloud organization, from its *Spiri Cloud* page, and serves its camera to the organization's Frigate | the same app |
-| `netbird` | Joins the organization's VPN once the robot is linked; idle otherwise | the same app |
+| `cloud-link` | Links the robot to a Spiri Cloud organization, from its *Spiri Cloud* page, joins the organization's VPN (NetBird) once linked, and serves its camera to the organization's Frigate | the same app |
 
 Watch for the end of the first boot:
 

@@ -1,7 +1,7 @@
 # Architecture
 
 How the SpiriDevelopmentKit is put together, and why. This is for people working
-*on* the SDK; people working *with* it should start at the [README](../README.md).
+*on* the SDK; people working *with* it should start at [getting-started.md](getting-started.md).
 
 Status: one simulated Mu flies in Gazebo and connects to QGroundControl; see
 [getting-started.md](getting-started.md) to run it. Anything marked
@@ -99,8 +99,8 @@ differ:
 | `sim-agent` | Joins the robot to the simulated world (below) | nothing |
 | `sim-link` (optional) | netem on the robot's link: a simulated radio | the real radio |
 
-Everything else is the same app on both: mavlink-router, zenoh, `cloud-link`
-and `netbird` (see [Spiri Cloud](#spiri-cloud)), and the operator's own code, such as the
+Everything else is the same app on both: mavlink-router, SpiriMav (`spirimav`), zenoh,
+`cloud-link` with its NetBird VPN (see [Spiri Cloud](#spiri-cloud)), and the operator's own code, such as the
 helipad detector. Moving from sim to hardware
 (#97) means swapping the first column for the third and changing nothing else.
 
@@ -126,9 +126,9 @@ Every zenoh app inside a robot stays on the robot's `spirisynq` network, as
 on a Mu: only `zenoh-router-host` is in the robot's network namespace.
 
 On its first boot a robot installs and starts the apps every Mu runs, listed in
-`ROBOT_APPS` as `<store>/<app>`. Released, that's only the zenoh router. In
+`ROBOT_APPS` as `<appsource>/<app>`. Released, that's only the zenoh router. In
 development (`compose.dev.yaml`) it's also `sim-agent`, `mavlink-router`,
-`ardupilot-sitl`, `sim-camera-ingress`, `cloud-link` and `netbird` from the
+`spirimav`, `ardupilot-sitl`, `sim-camera-ingress` and `cloud-link` from the
 mounted checkout, built inside the robot (`ROBOT_DEV`). After that
 they're ordinary installed apps, brought back by the inner dockerd's restart
 policy. Appsource-Spiri-Mu doesn't exist yet, so the zenoh router comes from
@@ -165,13 +165,13 @@ is the contract.
 - **Fixed settings.** cloud-link's SpiriConfig settings can fix the cloud
   address and the robot's name, to provision a robot for one organization.
   The page then only asks someone there to approve the link. In a dev robot
-  these can't be saved yet, since its stores are your read-only checkout.
+  these can't be saved yet, since its appsources are your read-only checkout.
 - **Unlinking** works from either side. A `401` on fetch means the cloud
   unlinked the robot: the credential and the env file are deleted. Any other
   failure is temporary, and the last good file stays.
 
-**NetBird.** The `netbird` app is the stock NetBird client with a wrapper
-(`netbird/client/spiri-netbird.sh`) that watches the env file instead of
+**NetBird.** `cloud-link`'s `netbird` service is the stock NetBird client with a wrapper
+(`cloud-link/netbird/spiri-netbird.sh`) that watches the env file instead of
 reading it through `env_file`, so linking, relinking and unlinking reach the
 VPN within seconds without a restart. Apps that must follow the link live
 should do the same; compose only reads `env_file` when it creates a container,
@@ -600,9 +600,9 @@ This repo builds images. **Appsource-Spiri-Simulation** says how to run them.
   plus a `compose.dev.yaml` that builds from source, for local work.
 - **This repo is itself an appsource**, for development. Each app is a
   top-level directory with a compose file, which is all SpiriConfig needs to
-  find it. Symlink the checkout into SpiriConfig's store directory, and apps
+  find it. Symlink the checkout into SpiriConfig's appsources directory, and apps
   installed from it run your working tree. See
-  [getting-started.md](getting-started.md#developing-the-sdk).
+  [getting-started.md](getting-started.md#day-to-day).
 
 The airgapped appliance ships these appsources already cloned (#146), and every
 image they pin is loaded into its registry.
@@ -619,11 +619,12 @@ gazebo/               gz/ (world image), served by gazebo and gazebo-assets
 debug-map/            web/ (MapLibre map and zenoh-ws), index/ (zenoh-index)
 ardupilot-sitl/       sitl/ (ArduCopter SITL image), installed inside a robot
 mavlink-router/       router/ (mavlink-router and its config), installed inside a robot
+spirimav/             (no source: SpiriMav's image, from its repo), installed inside a robot
 sim-agent/            agent/ (spawns the robot's airframe), installed inside a robot
 sim-camera-ingress/   ingress/ (SpiriCamera + gz:// source), installed inside a robot
 sim-robot/            robot/ (docker-in-docker + SpiriConfig image)
-cloud-link/           link/ (Spiri Cloud linking and its page), installed inside a robot
-netbird/              client/ (NetBird client following the link), installed inside a robot
+cloud-link/           link/ (Spiri Cloud linking and its page), netbird/ (NetBird client
+                      following the link), installed inside a robot
 compose.yaml          (planned) the whole appliance, for development
 models/               robot SDF templates and meshes (shipped in robot images)
 worlds/               world SDFs per KPI scenario
