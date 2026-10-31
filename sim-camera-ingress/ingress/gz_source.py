@@ -11,6 +11,9 @@ subscribers from their liveliness tokens, so this declares one, as a gz node
 would. A camera with no subscriber isn't rendered at all, which is why a sim
 camera costs nothing until its ingress runs.
 
+The lens comes from the ``camera_info`` the sensor publishes beside its image,
+read once on opening, so the camera's intrinsics are the sensor's own.
+
 Registered by being imported (SpiriCamera finds every SourceBase subclass);
 run.py imports it before handing over to SpiriCamera's CLI.
 """
@@ -18,16 +21,25 @@ run.py imports it before handing over to SpiriCamera's CLI.
 from __future__ import annotations
 
 import os
+import struct
 import threading
 import time
 import uuid
+from collections.abc import Iterator
 
 import cv2
 import numpy as np
 from loguru import logger
 from SpiriSynq.session import current_session
 
-from SpiriCamera.sources.base import CaptureSettings, SourceBase, SourceCapabilities, SourceError, SourceURL
+from SpiriCamera.sources.base import (
+    CaptureSettings,
+    Intrinsics,
+    SourceBase,
+    SourceCapabilities,
+    SourceError,
+    SourceURL,
+)
 
 PARTITION = os.environ.get("GZ_PARTITION", "sdk")
 
@@ -58,34 +70,70 @@ def _varint(data: bytes, i: int) -> tuple[int, int]:
         shift += 7
 
 
+def _fields(data: bytes | memoryview) -> Iterator[tuple[int, int, int | memoryview]]:
+    """A protobuf message's (field number, wire type, value), in order.
+
+    Varints are ints; length-delimited values are views into ``data``;
+    fixed-width ones are their raw bytes, as views too.
+    """
+    view = memoryview(data)
+    i = 0
+    while i < len(view):
+        tag, i = _varint(view, i)
+        number, wire = tag >> 3, tag & 7
+        if wire == 0:
+            value, i = _varint(view, i)
+            yield number, wire, value
+        elif wire in (1, 2, 5):
+            length = {1: 8, 5: 4}.get(wire)
+            if length is None:
+                length, i = _varint(view, i)
+            yield number, wire, view[i : i + length]
+            i += length
+        else:
+            raise ValueError(f"unexpected protobuf wire type {wire}")
+
+
 def decode_image(data: bytes) -> tuple[int, int, int, int, memoryview]:
     """gz.msgs.Image: width = 2, height = 3, step = 4, data = 5, pixel_format_type = 6.
 
     Returns (width, height, step, pixel format, pixels). The pixels are a view
     into ``data``, not a copy.
     """
-    view = memoryview(data)
     fields = {2: 0, 3: 0, 4: 0, 6: 0}
-    pixels = view[0:0]
-    i = 0
-    while i < len(data):
-        tag, i = _varint(data, i)
-        number, wire = tag >> 3, tag & 7
+    pixels = memoryview(b"")
+    for number, wire, value in _fields(data):
         if wire == 0:
-            value, i = _varint(data, i)
             fields[number] = value
-        elif wire == 2:
-            length, i = _varint(data, i)
-            if number == 5:
-                pixels = view[i : i + length]
-            i += length
-        elif wire == 5:
-            i += 4
-        elif wire == 1:
-            i += 8
-        else:
-            raise ValueError(f"unexpected protobuf wire type {wire}")
+        elif number == 5:
+            pixels = value
     return fields[2], fields[3], fields[4], fields[6], pixels
+
+
+def decode_camera_info(data: bytes) -> Intrinsics:
+    """gz.msgs.CameraInfo: width = 2, height = 3, intrinsics = 5.
+
+    intrinsics is a gz.msgs.CameraInfo.Intrinsics, whose k = 1 is the 3x3
+    camera matrix, row major: fx 0 cx / 0 fy cy / 0 0 1.
+    """
+    width = height = 0
+    k: list[float] = []
+    for number, wire, value in _fields(data):
+        if number == 2 and wire == 0:
+            width = value
+        elif number == 3 and wire == 0:
+            height = value
+        elif number == 5 and wire == 2:
+            for inner, inner_wire, item in _fields(value):
+                if inner != 1:
+                    continue
+                if inner_wire == 2:  # packed, as proto3 writes it
+                    k.extend(struct.unpack(f"<{len(item) // 8}d", item))
+                else:
+                    k.extend(struct.unpack("<d", item))
+    if len(k) != 9:
+        raise ValueError(f"camera matrix has {len(k)} entries, not 9")
+    return Intrinsics(width, height, fx=k[0], fy=k[4], cx=k[2], cy=k[5])
 
 
 class GzSource(SourceBase):
@@ -95,6 +143,9 @@ class GzSource(SourceBase):
 
     #: Seconds without a frame before checking the camera is still there.
     STALE_AFTER = 3.0
+
+    #: Seconds to wait for the sensor's camera_info when opening.
+    CAMERA_INFO_TIMEOUT = 5.0
 
     def __init__(self, url: SourceURL) -> None:
         super().__init__(url)
@@ -142,18 +193,63 @@ class GzSource(SourceBase):
             self._session = None
             raise SourceError(f"nothing publishes the gz topic {self.topic} (partition {PARTITION})")
 
-        # The token a gz subscriber declares, which is what makes the camera
-        # render and its topic publish: partition, process, node, node, MS
-        # (message subscriber), three empty fields, topic, message type.
-        node = uuid.uuid4()
-        mangled = self.topic.replace("/", "%")
-        token = f"@gz/%{PARTITION}/{uuid.uuid4()}/{node}/{node}/MS/%/%/%/{mangled}/gz.msgs.Image/%/%"
         now = time.monotonic()
         self._last_arrival = self._last_probe = now
         self._subscriber = self._session.declare_subscriber(self.key, self._on_sample)
-        self._token = self._session.liveliness().declare_token(token)
+        self._token = self._subscribe_token(self.topic, "gz.msgs.Image")
         logger.info(f"{self!r} subscribed to {self.key}")
-        return SourceCapabilities(vendor="Gazebo", model="camera sensor")
+
+        lens = self._camera_info()
+        if lens is None:
+            return SourceCapabilities(vendor="Gazebo", model="camera sensor")
+        logger.info(f"{self!r} lens {lens} from camera_info")
+        return SourceCapabilities(
+            max_supported_width=lens.width,
+            max_supported_height=lens.height,
+            vendor="Gazebo",
+            model="camera sensor",
+            intrinsics=lens,
+        )
+
+    def _subscribe_token(self, topic: str, message_type: str):
+        """Declare the token a gz subscriber to *topic* declares.
+
+        It's what makes the camera render and the topic publish: partition,
+        process, node, node, MS (message subscriber), three empty fields,
+        topic, message type.
+        """
+        node = uuid.uuid4()
+        mangled = topic.replace("/", "%")
+        token = f"@gz/%{PARTITION}/{uuid.uuid4()}/{node}/{node}/MS/%/%/%/{mangled}/{message_type}/%/%"
+        return self._session.liveliness().declare_token(token)
+
+    def _camera_info(self) -> Intrinsics | None:
+        """The sensor's lens, from the camera_info it publishes beside its image.
+
+        A gz camera sensor publishes ``<topic>/camera_info`` next to
+        ``<topic>/image`` with every frame, so this waits for one.
+        """
+        topic = self.topic.rsplit("/", 1)[0] + "/camera_info"
+        received: list[bytes] = []
+        arrived = threading.Event()
+
+        def on_sample(sample) -> None:
+            received.append(sample.payload.to_bytes())
+            arrived.set()
+
+        subscriber = self._session.declare_subscriber(f"@/{PARTITION}@{topic}", on_sample)
+        token = self._subscribe_token(topic, "gz.msgs.CameraInfo")
+        try:
+            if not arrived.wait(self.CAMERA_INFO_TIMEOUT):
+                logger.warning(f"{self!r}: no camera_info on {topic}, lens unknown")
+                return None
+            return decode_camera_info(received[0])
+        except ValueError as error:
+            logger.warning(f"{self!r}: unusable camera_info on {topic}: {error}")
+            return None
+        finally:
+            token.undeclare()
+            subscriber.undeclare()
 
     def _on_sample(self, sample) -> None:
         """On zenoh's thread: just keep the bytes for :py:meth:`read`."""
