@@ -9,7 +9,7 @@ COPY package.json ./
 RUN npm install --no-audit --no-fund
 COPY gz-msgs.mjs ./
 RUN node gz-msgs.mjs /gz-msgs/proto > gz-msgs.json
-COPY index.html main.js offline-map.js gz-world.js gz-services.js gz-transport.js shell.js shell.css zenoh.js path-tree.js path-tree.css synq.js synq-schema.js synq-schema.css synq-frames.js synq-frames.css vite.config.js ./
+COPY index.html main.js offline-map.js gz-world.js gz-services.js gz-transport.js shell.js shell.css zenoh.js path-tree.js path-tree.css synq.js synq-schema.js synq-schema.css synq-frames.js synq-frames.css coverage-bands.js coverage-bands.css vite.config.js ./
 COPY applets ./applets
 RUN npm run build
 

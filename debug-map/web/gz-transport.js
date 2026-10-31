@@ -76,10 +76,17 @@ export class Gazebo extends EventTarget {
   }
 
   // Calls handler(message) for every message on topic, of type (a gz-msgs
-  // name such as "gz.msgs.Pose_V"). Returns a function that unsubscribes.
-  subscribe(topic, type, handler) {
+  // name such as "gz.msgs.Pose_V"), or with everyMs, for at most one each
+  // everyMs: the rest aren't decoded. Returns a function that unsubscribes.
+  subscribe(topic, type, handler, { everyMs = 0 } = {}) {
     const untoken = this.#zenoh.token(subscriberToken(topic, type));
+    let last = -Infinity;
     const unsubscribe = this.#zenoh.subscribe(key(topic), (sample) => {
+      if (everyMs) {
+        const now = performance.now();
+        if (now - last < everyMs) return;
+        last = now;
+      }
       let msg;
       try {
         msg = decode(type, sample.payload().toBytes());

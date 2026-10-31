@@ -10,7 +10,8 @@ export default {
   order: 10,
   mount(el, { layers }) {
     el.classList.add("layers");
-    function row({ id, title, layer, info }) {
+    const expanded = new Set(); // ids of layers whose settings are open
+    function row({ id, title, layer, info, details }) {
       const label = document.createElement("label");
       label.className = "row";
       if (info) label.title = info;
@@ -21,7 +22,29 @@ export default {
       const name = document.createElement("span");
       name.textContent = title;
       label.append(box, name);
-      return label;
+      if (!details) return label;
+
+      // A layer with settings: a toggle at the row's end opens them below it.
+      const toggle = document.createElement("button");
+      toggle.className = "expand";
+      toggle.title = "Settings";
+      const panel = document.createElement("div");
+      panel.className = "details";
+      const show = (open) => {
+        toggle.textContent = open ? "▾" : "▸";
+        panel.hidden = !open;
+        if (open && !panel.childElementCount) details(panel);
+      };
+      toggle.onclick = (e) => {
+        e.preventDefault(); // not the checkbox
+        if (!expanded.delete(id)) expanded.add(id);
+        show(expanded.has(id));
+      };
+      label.append(toggle);
+      show(expanded.has(id));
+      const wrap = document.createElement("div");
+      wrap.append(label, panel);
+      return wrap;
     }
     function render() {
       el.replaceChildren(

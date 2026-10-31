@@ -1,0 +1,22 @@
+/* The Camera coverage layer's bands, in its Layers row. */
+.bands { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.bands .band { display: flex; align-items: center; gap: 4px; }
+.bands input, .bands select {
+  padding: 2px 4px; border: 1px solid var(--line); border-radius: 4px;
+  background: #101317; color: var(--text); font: inherit;
+}
+.bands .name { width: 72px; }
+.bands .unit { color: var(--muted); }
+.bands button {
+  padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px;
+  background: transparent; color: var(--muted); font: inherit; cursor: pointer;
+}
+.bands button:hover { color: var(--text); background: var(--hover); }
+.bands .band button { border: 0; margin-left: auto; }
+.bands .actions { display: flex; gap: 4px; padding-top: 2px; }
+.bands .about { margin: 0 0 2px; color: var(--muted); line-height: 1.35; }
+/* No spinners: they take most of a narrow number field. */
+.bands input[type="number"] { -moz-appearance: textfield; appearance: textfield; text-align: right; }
+.bands input[type="number"]::-webkit-inner-spin-button,
+.bands input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.bands .unit { white-space: nowrap; }

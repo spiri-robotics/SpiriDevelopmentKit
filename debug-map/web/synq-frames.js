@@ -3,14 +3,18 @@ import { MercatorCoordinate } from "maplibre-gl";
 import {
   AmbientLight,
   BoxGeometry,
+  BufferGeometry,
   Camera,
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
   Euler,
+  Float32BufferAttribute,
   Group,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   Quaternion,
   Scene,
@@ -54,6 +58,26 @@ import "./synq-frames.css";
 //
 // Scene coordinates are ENU metres from an anchor near the frames, so floats
 // hold at any zoom; the anchor moves when the view goes far from it.
+//
+// Camera coverage, a layer of its own: a frame whose `cameras` link to
+// SpiriCamera cameras (a gimbal) gets, for each camera with a known lens
+// (Camera.intrinsics), its view as a pyramid along the frame's x axis --
+// image right along y, down along z -- with the lens's own angles, in bands,
+// nearest first, each from where the last ends and capped at its far end.
+// The bands are the viewer's, set in the Layers applet and kept in this
+// browser (see `bands`): each either a target -- an object `size` metres
+// across that must span `pixels` of the frame, so its range follows the
+// lens, at the image centre and the lens's native size -- or a fixed
+// distance. They start as Johnson's criteria for recognition (4 line pairs,
+// 8 px, across the critical dimension) of a person and a car.
+//
+// Unlike the frames, the pyramids are depth-tested against the map: drawn
+// before this layer clears depth, so the terrain, 3D buildings and Gazebo's
+// models hide what's behind or under them, and a view ends where it meets
+// them.
+//
+// A camera's lens comes once from its sr_rehydrate, when a frame first links
+// to it, then live from `**/intrinsics`.
 
 const DISCOVER_MS = 5000;
 const ARROW_PX = 48; // arrow length on screen
@@ -61,6 +85,42 @@ const REANCHOR_M = 20000;
 const COLOR = 0xbb9af7;
 const FIN_COLOR = 0xe6dcff;
 const OPEN_COLOR = 0xffb86c; // an open frame's arrow, and its accuracy
+const CONE_COLOR = 0x3a9bff;
+const FACE_OPACITY = 0.08;
+const EDGE_OPACITY = 0.6;
+
+// Coverage bands: { name, mode: "pixels", size, pixels } or
+// { name, mode: "distance", range }. Johnson's recognition is 4 line pairs,
+// 2 px each, across the target's critical dimension: a standing person's
+// 0.75 m, and NATO's 2.3 m vehicle.
+export const JOHNSON_BANDS = [
+  { name: "person", mode: "pixels", size: 0.75, pixels: 8 },
+  { name: "car", mode: "pixels", size: 2.3, pixels: 8 },
+];
+const BANDS_KEY = "coverage-bands";
+
+// A band's range in metres through a lens, or null if it has none: for a
+// target, where its size spans `pixels` at the image centre, where one
+// pixel subtends 1/f radians.
+export function bandRange(lens, band) {
+  const range = band.mode === "distance" ? band.range : (band.size * Math.sqrt(lens.fx * lens.fy)) / band.pixels;
+  return Number.isFinite(range) && range > 0 ? range : null;
+}
+
+function loadBands() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BANDS_KEY));
+    if (Array.isArray(saved)) return saved;
+  } catch {}
+  return structuredClone(JOHNSON_BANDS);
+}
+
+// A lens's half-angle tangents from its principal point: left, right, up, down.
+const tangents = (l) => [l.cx / l.fx, (l.width - l.cx) / l.fx, l.cy / l.fy, (l.height - l.cy) / l.fy];
+const fovs = (l) => {
+  const [left, right, up, down] = tangents(l).map(Math.atan);
+  return [left + right, up + down].map((r) => (r * 180) / Math.PI);
+};
 
 // A unit arrow along +x (forward) from the frame's origin, marked by a ball,
 // with a fin on its top (-z, up in FRD) so roll shows. three.js's round
@@ -169,12 +229,19 @@ export class SynqFrames {
     this.dirty = true;
     this.open = new Set(); // topics whose labels are open
     this.rounds = 0;
+    this.lenses = new Map(); // camera topic -> its intrinsics, or null if unknown
 
     this.arrowMaterial = new MeshLambertMaterial({ color: COLOR });
     this.openMaterial = new MeshLambertMaterial({ color: OPEN_COLOR });
     this.finMaterial = new MeshLambertMaterial({ color: FIN_COLOR });
     this.parentMaterial = new LineMaterial({ color: COLOR, linewidth: 2 });
     this.accuracyMaterial = new LineMaterial({ color: OPEN_COLOR, linewidth: 1.5 });
+    // Every band's faces, and its edges.
+    this.bandFace = new MeshBasicMaterial({ color: CONE_COLOR, transparent: true, opacity: FACE_OPACITY, side: DoubleSide, depthWrite: false });
+    this.bandEdge = new LineMaterial({ color: CONE_COLOR, linewidth: 1.5, transparent: true, opacity: EDGE_OPACITY });
+    this.bands = loadBands();
+    // The view's corner rays, once, the whole way out.
+    this.rayMaterial = new LineMaterial({ color: 0xffffff, linewidth: 1, transparent: true, opacity: 0.25 });
 
     // Light from overhead, a little south-east, as gz-world.js's.
     const sun = new DirectionalLight(0xffffff, 1.4);
@@ -182,6 +249,9 @@ export class SynqFrames {
     this.arrows = new Group(); // one per placed frame, rebuilt with them
     this.lines = new Group(); // parent lines, accuracy cylinders
     this.scene.add(sun, new AmbientLight(0xffffff, 0.7), this.lines, this.arrows);
+    // Camera coverage: a scene of its own, as it's depth-tested and the rest isn't.
+    this.cones = new Group();
+    this.coverage = new Scene().add(this.cones);
   }
 
   onAdd(map, gl) {
@@ -190,7 +260,7 @@ export class SynqFrames {
     this.renderer.autoClear = false;
     this.overlay = document.createElement("div");
     this.overlay.className = "sf-labels";
-    this.overlay.hidden = !this.scene.visible;
+    this.overlay.hidden = !this.show;
     map.getCanvasContainer().append(this.overlay);
     this.start();
   }
@@ -199,13 +269,24 @@ export class SynqFrames {
     this.overlay.remove();
   }
 
+  // The frames: arrows, lines and labels.
   get show() {
-    return this.scene.visible;
+    return this.arrows.visible;
   }
 
   set show(on) {
-    this.scene.visible = on;
+    this.arrows.visible = this.lines.visible = on;
     if (this.overlay) this.overlay.hidden = !on;
+    this.repaint();
+  }
+
+  // Camera coverage.
+  get showCoverage() {
+    return this.cones.visible;
+  }
+
+  set showCoverage(on) {
+    this.cones.visible = on;
     this.repaint();
   }
 
@@ -228,6 +309,7 @@ export class SynqFrames {
     for (const field of ["pose", "mount"]) {
       this.zenoh.subscribe(`**/${field}`, (sample) => this.onSample(field, sample));
     }
+    this.zenoh.subscribe("**/intrinsics", (sample) => this.onLens(sample));
     (async () => {
       for (;;) {
         try {
@@ -256,6 +338,40 @@ export class SynqFrames {
       return;
     }
     this.changed();
+  }
+
+  onLens(sample) {
+    const key = sample.keyexpr().toString();
+    if (sample.kind() === SampleKind.DELETE) {
+      // A camera gone: rehydrated again if it comes back.
+      if (key.endsWith("/**") && this.lenses.delete(key.slice(0, -3))) this.changed();
+      return;
+    }
+    const topic = key.slice(0, -"/intrinsics".length);
+    try {
+      this.lenses.set(topic, load(sample.payload().toString()) ?? null);
+    } catch (e) {
+      console.warn(`frames: ${key}`, e);
+      return;
+    }
+    this.changed();
+  }
+
+  // A camera's lens, the first time a frame links to it. Its rehydrate has a
+  // frame in it too, but that's once; after, the lens comes live.
+  async fetchLens(topic) {
+    this.lenses.set(topic, null);
+    try {
+      const [reply] = await this.zenoh.query(`${topic}/sr_rehydrate`);
+      if (!reply || reply instanceof Error) throw reply ?? new Error("no answer");
+      // Only the lens, from the rest of the camera.
+      const lens = load(reply.payload().toString())?.intrinsics ?? null;
+      if (this.lenses.has(topic) && !this.lenses.get(topic)) this.lenses.set(topic, lens);
+      this.changed();
+    } catch (e) {
+      this.lenses.delete(topic); // so the next round asks again
+      console.warn(`frames: camera ${topic}`, e);
+    }
   }
 
   async discover() {
@@ -292,6 +408,8 @@ export class SynqFrames {
       // Live updates are newer than any snapshot.
       frame.pose ??= toPose(o.pose);
       frame.mount ??= toPose(o.mount);
+      frame.cameras = frame.links.filter((l) => l.field === "cameras").map((l) => l.to);
+      for (const camera of frame.cameras) if (!this.lenses.has(camera)) this.fetchLens(camera);
       this.frames.set(topic, frame);
     } catch (e) {
       console.warn(`frames: ${topic}`, e);
@@ -321,8 +439,9 @@ export class SynqFrames {
       f.world = f.pose.q && angles(levelFrame(f.lat, f.lon, "ned").invert().multiply(f.pose.q));
     }
     this.arrows.clear();
-    for (const child of this.lines.children) child.geometry.dispose();
+    for (const child of [...this.lines.children, ...this.cones.children]) child.geometry.dispose();
     this.lines.clear();
+    this.cones.clear();
     if (!placed.length) return;
 
     if (!this.anchor) this.setAnchor([placed[0].lon, placed[0].lat]);
@@ -352,6 +471,60 @@ export class SynqFrames {
     }
     if (parentLines.length) this.lines.add(segments(parentLines, this.parentMaterial));
     for (const f of placed) if (this.isOpen(f)) this.addAccuracy(f);
+
+    for (const f of placed) {
+      if (!f.pose.q) continue; // a point has no facing to look along
+      for (const camera of f.cameras ?? []) {
+        const lens = this.lenses.get(camera);
+        if (lens) this.addCoverage(f, lens);
+      }
+    }
+  }
+
+  // The coverage bands, as the Layers applet edits them; kept in this browser.
+  setBands(bands) {
+    this.bands = bands;
+    try {
+      localStorage.setItem(BANDS_KEY, JSON.stringify(bands));
+    } catch {}
+    this.changed();
+  }
+
+  // A camera's view from frame f, as bands along it, nearest first: each from
+  // the last one's range out to its own, its far end capped and outlined, and
+  // the corner rays drawn once over all of them.
+  addCoverage(f, lens) {
+    const [left, right, up, down] = tangents(lens);
+    // The view's corners at range r, in f's body frame (x forward, y right, z down).
+    const corners = (r) => [
+      [r, -left * r, -up * r],
+      [r, right * r, -up * r],
+      [r, right * r, down * r],
+      [r, -left * r, down * r],
+    ].map((c) => new Vector3(...c).applyQuaternion(f.inScene).add(f.at));
+
+    const ranges = [...new Set(this.bands.map((b) => bandRange(lens, b)).filter((r) => r))].sort((a, b) => a - b);
+    if (!ranges.length) return;
+    let near = corners(0);
+    for (const range of ranges) {
+      const far = corners(range);
+      const tris = [];
+      const edges = [];
+      for (let i = 0; i < 4; i++) {
+        const j = (i + 1) % 4;
+        tris.push(...[near[i], far[i], far[j], near[i], far[j], near[j]].flatMap((c) => c.toArray()));
+        edges.push(...far[i].toArray(), ...far[j].toArray());
+      }
+      // Capped at its far end, so whether something's inside a band shows.
+      tris.push(...[far[0], far[1], far[2], far[0], far[2], far[3]].flatMap((c) => c.toArray()));
+      const faces = new BufferGeometry();
+      faces.setAttribute("position", new Float32BufferAttribute(tris, 3));
+      const mesh = new Mesh(faces, this.bandFace);
+      mesh.frustumCulled = false;
+      this.cones.add(mesh, segments(edges, this.bandEdge));
+      near = far;
+    }
+    this.cones.add(segments(near.flatMap((c) => [...f.at.toArray(), ...c.toArray()]), this.rayMaterial));
   }
 
   // The pose's 90% accuracy: circles of the horizontal radius at the frame and
@@ -400,7 +573,9 @@ export class SynqFrames {
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
     const canvas = this.map.getCanvas();
     this.size = [canvas.clientWidth, canvas.clientHeight];
-    for (const material of [this.parentMaterial, this.accuracyMaterial]) material.resolution.set(...this.size);
+    for (const material of [this.parentMaterial, this.accuracyMaterial, this.rayMaterial, this.bandEdge]) {
+      material.resolution.set(...this.size);
+    }
 
     // Arrows a fixed size on screen: scaled by how many pixels a metre is there.
     for (const arrow of this.arrows.children) {
@@ -411,11 +586,14 @@ export class SynqFrames {
       arrow.matrixWorldNeedsUpdate = true;
     }
     this.renderer.resetState();
-    // Over the map and the Gazebo models, so a robot's frames show inside
-    // its model, but depth-tested among themselves.
+    // Coverage first, against the map's depth, so the ground, buildings and
+    // Gazebo's models hide it.
+    if (this.cones.visible) this.renderer.render(this.coverage, this.camera);
+    // The frames over the map and the Gazebo models, so a robot's frames show
+    // inside its model, but depth-tested among themselves.
     this.renderer.clearDepth();
     this.renderer.render(this.scene, this.camera);
-    if (this.scene.visible) this.placeLabels();
+    if (this.show) this.placeLabels();
   }
 
   // Scene point to [x, y] on screen, or null behind the camera.
@@ -480,6 +658,20 @@ export class SynqFrames {
       [["", `${f.lat.toFixed(7)}, ${f.lon.toFixed(7)}`], ["k", ", "], ["", f.h.toFixed(2)], ["k", " m above WGS84"]],
       ...f.links.map(({ field, to }) => [["k", `${field} → `], ["", shortName(to, f.topic)]]),
     );
+    for (const camera of f.cameras ?? []) {
+      const lens = this.lenses.get(camera);
+      const name = shortName(camera, f.topic);
+      if (!lens) {
+        rows.push([["k", `${name}: lens unknown`]]);
+        continue;
+      }
+      const [h, v] = fovs(lens);
+      rows.push([["k", `${name}: `], ["", `${deg(h)} × ${deg(v)}`], ["k", ` at ${lens.width}×${lens.height}, from ${lens.origin || "?"}`]]);
+      for (const band of this.bands) {
+        const range = bandRange(lens, band);
+        if (range) rows.push([["k", `  ${band.name || "band"} to `], ["", `${range.toFixed(0)} m`]]);
+      }
+    }
     return rows;
   }
 

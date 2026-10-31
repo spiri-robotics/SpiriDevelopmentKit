@@ -6,3 +6,8 @@
 .layers .row { justify-content: flex-start; gap: 6px; cursor: pointer; }
 .layers .row span { word-break: break-all; }
 .layers .empty { color: var(--muted); font-size: 12px; padding: 2px 0; }
+.layers .expand {
+  margin-left: auto; padding: 0 4px; border: 0; background: none;
+  color: var(--muted); cursor: pointer; font: inherit;
+}
+.layers .details { padding: 4px 0 6px 22px; }

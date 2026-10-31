@@ -6,6 +6,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import * as gzServices from "./gz-services.js";
 import { Gazebo } from "./gz-transport.js";
 import { GazeboWorld } from "./gz-world.js";
+import { bandEditor } from "./coverage-bands.js";
 import { addZenohProtocol, startOfflineLayers } from "./offline-map.js";
 import { Actions, Entities, Layers, startShell } from "./shell.js";
 import { SynqFrames } from "./synq-frames.js";
@@ -116,18 +117,18 @@ const frames = new SynqFrames(zenoh);
 const gz = {
   world: null,
 
-  // Moves a model to lngLat, keeping its height above the map's terrain, so
-  // a landed robot stays landed and a flying one flies on. 30 cm higher,
-  // so where the terrain and the world's own ground disagree it drops onto
-  // the ground rather than into it. Velocities are kept.
+  // Moves a model to lngLat, keeping its height above what's under it -- the
+  // world's own models where there are any, which is what Gazebo stands it
+  // on, else the map's terrain -- so a landed robot stays landed, a flying
+  // one flies on, and a static model isn't left inside a hill. 5 cm higher,
+  // so it settles onto the ground rather than into it. Velocities are kept.
   async moveTo(name, lngLat) {
     const pose = world3d.poseOf(name);
     if (!gz.world || !pose) throw new Error(`${name} isn't in the world`);
-    const ground = (at) => (map.getTerrain() ? map.queryTerrainElevation(at) : null);
-    const [from, to] = [ground(world3d.lngLatOf(name)), ground(lngLat)];
-    const climb = from != null && to != null ? to - from : 0;
     const { x, y } = lngLatToEnu(lngLat);
-    await gzServices.setPose(zenoh, gz.world, name, { ...pose, position: { x, y, z: pose.position.z + climb + 0.3 } });
+    const from = world3d.surfaceAt(pose.position.x, pose.position.y, name);
+    const climb = world3d.surfaceAt(x, y, name) - from;
+    await gzServices.setPose(zenoh, gz.world, name, { ...pose, position: { x, y, z: pose.position.z + climb + 0.05 } });
   },
 
   // Back to its spawn pose, at rest. Only robots have a sim-agent.
@@ -318,12 +319,29 @@ async function loadWorld() {
   // Subscribe first, so a model added while the scene is fetched isn't missed;
   // adding one twice is harmless. Scene lights aren't used: gz-world.js lights
   // the models.
+  //
+  // dynamic_pose/info leaves out static models, so one moved by set_pose (the
+  // Move applet's, or anyone's) would stay where it was drawn. pose/info has
+  // every pose, at Gazebo's full rate; twice a second is plenty for those,
+  // and only those: anything dynamic_pose/info has carried is left to it.
+  const dynamic = new Set(); // entity ids
   const subs = [
     gazebo.subscribe(`/world/${world}/scene/info`, "gz.msgs.Scene", (msg) => msg.model?.forEach(addModel)),
     gazebo.subscribe(`/world/${world}/scene/deletion`, "gz.msgs.UInt32_V", (msg) =>
       msg.data?.forEach((id) => removeModel(idToName.get(id))),
     ),
-    gazebo.subscribe(`/world/${world}/dynamic_pose/info`, "gz.msgs.Pose_V", (msg) => msg.pose?.forEach(applyPose)),
+    gazebo.subscribe(`/world/${world}/dynamic_pose/info`, "gz.msgs.Pose_V", (msg) =>
+      msg.pose?.forEach((pose) => {
+        dynamic.add(pose.id);
+        applyPose(pose);
+      }),
+    ),
+    gazebo.subscribe(
+      `/world/${world}/pose/info`,
+      "gz.msgs.Pose_V",
+      (msg) => msg.pose?.forEach((pose) => dynamic.has(pose.id) || applyPose(pose)),
+      { everyMs: 500 },
+    ),
   ];
   unsubscribe = () => subs.forEach((drop) => drop());
   let scene;
@@ -367,6 +385,18 @@ map.on("load", () => {
       frames.show = on;
     },
   }, { section: "SpiriSynq", info: "Every Position: an arrow along its x axis, fin up, joined to its parent; click a label for angles and accuracy" });
+  layers.add("synq-coverage", "Camera coverage", {
+    get show() {
+      return frames.showCoverage;
+    },
+    set show(on) {
+      frames.showCoverage = on;
+    },
+  }, {
+    section: "SpiriSynq",
+    info: "Each gimbal camera's view, from its lens, in bands out to set ranges: by default where it recognises a person, then a car (Johnson: 8 px across 0.75 m, 2.3 m). Hidden behind terrain, buildings and Gazebo's models. ▸ to edit the bands",
+    details: (el) => bandEditor(el, frames),
+  });
   // Gazebo, as two layers: the world's 3D models and ground outlines, and
   // its entities' labels, drop lines and heights.
   const sim = { section: "Simulation" };

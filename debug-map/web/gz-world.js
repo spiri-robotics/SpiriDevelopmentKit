@@ -16,6 +16,7 @@ import {
   Mesh,
   MeshLambertMaterial,
   Quaternion,
+  Raycaster,
   Scene,
   SphereGeometry,
   Vector3,
@@ -200,6 +201,19 @@ export class GazeboWorld {
     if (!root || !this.origin) return null;
     const p = new Vector3().setFromMatrixPosition(root.matrix).applyMatrix4(this.origin);
     return new MercatorCoordinate(p.x, p.y, p.z).toLngLat().toArray();
+  }
+
+  // The height of what's under a point, in the world's ENU frame: the
+  // topmost of Gazebo's own models there (the place's ground, a roof) other
+  // than `except`, so it's the surface models actually stand on; else the
+  // terrain's (groundAt). Casts a ray, so it's for a move, not every frame.
+  surfaceAt(x, y, except = null) {
+    this.world.updateMatrixWorld(true);
+    const skip = this.roots.get(except);
+    const targets = this.world.children.filter((root) => root !== skip);
+    const ray = new Raycaster(new Vector3(x, y, 1e4), new Vector3(0, 0, -1));
+    const [hit] = ray.intersectObjects(targets, true);
+    return hit ? hit.point.z : this.groundAt(x, y);
   }
 
   // A top-level model's pose in the world's ENU frame, or null.

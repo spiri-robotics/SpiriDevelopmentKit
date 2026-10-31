@@ -320,6 +320,41 @@ subscribers from their liveliness tokens, so the `gz://` source declares
 one. A camera nobody subscribes to isn't rendered, so the camera costs nothing
 until its ingress runs.
 
+**The lens.** A SpiriCamera camera carries its pinhole intrinsics
+(`Camera.intrinsics`: size, fx, fy, cx, cy, and where they came from), so
+anything projecting through it can get the field of view. There are three
+origins, and the most trusted one that reported something wins:
+
+1. **manual**: the camera's settings. `SPIRICAMERA_HFOV`/`SPIRICAMERA_VFOV` in
+   degrees, or a calibration, `SPIRICAMERA_FX`/`FY`/`CX`/`CY` at
+   `SPIRICAMERA_CALIBRATION_WIDTH`×`HEIGHT`.
+2. **source**: what the source reports. The `gz://` source reads the
+   sensor's `camera_info` when it opens, so a sim camera is exact.
+3. **mavlink**: SpiriMav reads `CAMERA_INFORMATION` and `CAMERA_FOV_STATUS`
+   and calls `set_intrinsics` on the cameras the camera's gimbal carries
+   (`SPIRI_MAV_GIMBAL_CAMERAS`). ArduPilot sends only a field of view, from
+   `CAMn_HFOV`/`CAMn_VFOV`, and only for a configured camera (`CAMn_TYPE`).
+   These numbers are typed in somewhere else, which is why they rank last.
+
+A field of view with no calibrated size becomes a centred model at the
+camera's frame size. The sim's SITL doesn't set `CAM1_*`, since Gazebo's
+report outranks it.
+
+The debug map's *Camera coverage* layer draws each gimbal camera's view from
+its lens, along the gimbal's pose, as a pyramid in bands, each capped at its
+far end. It's depth-tested against the map, so terrain, buildings and
+Gazebo's models hide it. The bands are set in the layer's row in Layers (▸)
+and kept in the browser: each is a target, an object so many metres across
+that must span so many pixels, so its range follows each camera's lens
+(size × f ÷ pixels, at the image centre), or a fixed distance. They start as
+Johnson's recognition (4 line pairs, 8 px) of a person (0.75 m) and a car
+(2.3 m): 19 m and 59 m for the sim's 640×480, 114.6° camera.
+
+Johnson is an approximation. Sweeping Gazebo Fuel's "Casual female" and
+"Hatchback red" away from that camera, YOLOv8n (confidence 0.25) still found
+the person at 26 m slant, a little past Johnson, but the car only to 31 m,
+about half Johnson's range.
+
 **Known gap: removed models leave tokens behind.** Gazebo doesn't undeclare
 a removed model's sensor and controller tokens, so its topics still look
 published until the world restarts.

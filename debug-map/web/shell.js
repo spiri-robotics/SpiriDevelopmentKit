@@ -57,10 +57,12 @@ export class Layers extends EventTarget {
     this.#sections.set(name, empty);
   }
 
-  add(id, title, layer, { section = "", info = "" } = {}) {
+  // `details`, optional, draws the layer's settings into an element, shown
+  // when its row is expanded in the Layers applet.
+  add(id, title, layer, { section = "", info = "", details = null } = {}) {
     layer.show = this.#shown[id] ?? layer.show;
     if (!this.#sections.has(section)) this.#sections.set(section, "");
-    this.#items.set(id, { id, title, layer, section, info });
+    this.#items.set(id, { id, title, layer, section, info, details });
     this.dispatchEvent(new Event("change"));
   }
 
