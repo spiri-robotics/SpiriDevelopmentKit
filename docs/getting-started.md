@@ -54,13 +54,14 @@ yourself. Removing the appsource only deletes the link.
 
 ## 3. Start the world
 
-Install three apps, in this order. Both appsources have a `gazebo`, so name the
+Install four apps, in this order. Both appsources have a `gazebo`, so name the
 appsource:
 
 ```console
 $ uvx spiriconfig appstore install Appsource-Spiri-Simulation/zenoh-router
 $ uvx spiriconfig appstore install SpiriDevelopmentKit/gazebo
 $ uvx spiriconfig appstore install SpiriDevelopmentKit/debug-map
+$ uvx spiriconfig appstore install SpiriDevelopmentKit/offline-map
 ```
 
 | App | What it is |
@@ -68,20 +69,18 @@ $ uvx spiriconfig appstore install SpiriDevelopmentKit/debug-map
 | `zenoh-router` | The router everything meets at. It creates the `spirisynq` docker network the other apps join. |
 | `gazebo` | The simulated world. Choose which in its settings. |
 | `debug-map` | A globe showing the world and everything on zenoh. It appears in SpiriConfig's sidebar as *Debug map*. |
+| `offline-map` | Map tiles over zenoh, so the map works without the internet. Download regions from its *Offline maps* page. |
 
-Start the router as is. Gazebo and the map build from your checkout, so build
-them first:
+Start the router as is. The others build from your checkout, which `--dev`
+does each time it starts them:
 
 ```console
 $ uvx spiriconfig docker up zenoh-router
-$ for app in gazebo debug-map; do
-    (cd ~/spiri-apps/$app && docker compose -p $app -f compose.yaml -f compose.dev.yaml build) &&
-    uvx spiriconfig docker up $app --dev
-  done
+$ for app in gazebo debug-map offline-map; do uvx spiriconfig docker up $app --dev; done
 ```
 
 In the web UI, **Up (dev)** does the same as `docker up --dev`, in advanced
-mode. Neither rebuilds for you yet, so build after every change.
+mode.
 
 **Choosing a world.** Set it in Gazebo's settings, or:
 
@@ -116,17 +115,15 @@ $ uvx spiriconfig docker settings mu-1 SDK_SOURCE="$PWD/SpiriDevelopmentKit"
 
 Its other settings are its name, its MAVLink system ID, the port
 QGroundControl connects to, *Gimbal camera* and *Gimbal rangefinder*. The
-defaults are fine. The gimbal camera is off by default: turn it on for a
-3-axis gimbal with a camera under the airframe, which you point from
-QGroundControl like any ArduPilot mount and watch in the debug map's
-*Cameras* applet. *Gimbal rangefinder* adds a laser rangefinder along the
-camera's axis, which ArduPilot reports as rangefinder 1.
+defaults are fine. *Gimbal camera* is on: a 3-axis gimbal with a camera under
+the airframe, which you point from QGroundControl like any ArduPilot mount and
+watch in the debug map's *Cameras* applet, as `camera1` or, with the HUD drawn
+on it, `hud/camera1`. *Gimbal rangefinder* is off; turn it on for a laser
+rangefinder along the camera's axis, which ArduPilot reports as rangefinder 1.
 
-Build it and start it:
+Start it, which builds it:
 
 ```console
-$ cd ~/spiri-apps/mu-1
-$ docker compose -p mu-1 -f compose.yaml -f compose.dev.yaml build
 $ uvx spiriconfig docker up mu-1 --dev
 ```
 
@@ -141,7 +138,7 @@ five of them, which takes a few minutes:
 | `mavlink-router` | The robot's MAVLink endpoint, tcp 5760: QGroundControl and the robot's own apps connect to the flight controller through it at once | the same app |
 | `spirimav` | The robot on SpiriSynq: its state, commands, and frames (origin, home, gimbals, and the region of interest QGroundControl sets), drawn on the debug map | the same app |
 | `ardupilot-sitl` | The flight controller: ArduCopter SITL, flying the airframe in Gazebo | the flight controller board |
-| `sim-camera-ingress` | The gimbal camera's picture, on SpiriSynq. Idle without *Gimbal camera* | `camera-ingress`, from the real camera |
+| `sim-camera-ingress` | The gimbal camera's picture, on SpiriSynq, and its HUD variant with SpiriMav's overlays. Idle without *Gimbal camera* | `camera-ingress`, from the real camera |
 | `cloud-link` | Links the robot to a Spiri Cloud organization, from its *Spiri Cloud* page, joins the organization's VPN (NetBird) once linked, and serves its camera to the organization's Frigate | the same app |
 
 Watch for the end of the first boot:
@@ -167,13 +164,11 @@ Arm and take off as with any ArduCopter.
 
 ## Day to day
 
-**After changing code**, build and restart the app that changed. For an app on
-your machine (`gazebo`, `debug-map`, `mu-1`), build as in step 3. For an app
-inside the robot, build it there:
+**After changing code**, start the app that changed again with Up (dev), which
+rebuilds it. For an app inside the robot, do that in the robot:
 
 ```console
-$ docker exec mu-1 sh -c 'cd /srv/compose/ardupilot-sitl &&
-    docker compose -p ardupilot-sitl -f compose.yaml -f compose.dev.yaml up -d --build'
+$ docker exec mu-1 spiriconfig docker up ardupilot-sitl --dev
 ```
 
 **After changing the robot's settings**, such as *Gimbal camera*, restart it
@@ -219,8 +214,6 @@ $ uvx spiriconfig docker up mu-1 --dev
 - **The world freezes if SITL stops while its airframe is in the world.**
   Gazebo waits for SITL before every physics step, with no timeout. Restarting
   the robot brings it back. If you remove the robot for good, restart Gazebo.
-- **Nothing rebuilds by itself.** Up (dev) only builds images that don't exist
-  yet.
 - **One robot.** Several robots need their own ports and system IDs, and a way
   for QGroundControl to reach all of them. Not done yet.
 - **The robot's own SpiriConfig** opens inside yours under *mu-1*, but nesting
