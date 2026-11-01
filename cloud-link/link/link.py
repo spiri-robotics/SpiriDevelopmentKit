@@ -120,6 +120,15 @@ def normalize_url(url: str) -> str:
     return url
 
 
+def drones_candidates(url: str) -> list[str]:
+    """Where the Drones app might be: the address itself, then its drones.
+    subdomain, so a cloud's own address (preview.spiri.ca) finds it."""
+    parts = urlsplit(url)
+    if parts.hostname.startswith("drones.") or parts.path:
+        return [url]
+    return [url, f"{parts.scheme}://drones.{parts.netloc}"]
+
+
 def fixed_url() -> str:
     """The Cloud address setting as the page should show it: normalized when it
     can be, as typed when it can't (linking then says why)."""
@@ -236,13 +245,25 @@ class Link:
                 raise ValueError("already linked; unlink first")
             self.prefs = dict(url=url, name=name)
         write_private(PREFS, json.dumps(self.prefs).encode())
-        try:
-            status, _, body = request("POST", f"{url}/oauth/device_authorization",
-                                      dict(client_id="spiri-drone", drone_name=name))
-        except OSError as e:
-            raise ValueError(describe_network_error(e)) from None
-        if status != 200:
+        typed = url
+        for url in drones_candidates(typed):
+            try:
+                status, _, body = request("POST", f"{url}/oauth/device_authorization",
+                                          dict(client_id="spiri-drone", drone_name=name))
+            except OSError as e:
+                status, error = None, describe_network_error(e)
+            if status == 200:
+                break
+        else:
+            # Report the address as typed, not the guess.
+            url = typed
+            if status is None:
+                raise ValueError(error)
             raise ValueError(f"{url} didn't give a link code ({status}); is it the Drones app's address?")
+        if url != typed:
+            with self.lock:
+                self.prefs = dict(url=url, name=name)
+            write_private(PREFS, json.dumps(self.prefs).encode())
         try:
             dev = json.loads(body)
             pending = dict(url=url, device_code=dev["device_code"], user_code=dev["user_code"],

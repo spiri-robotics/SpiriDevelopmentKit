@@ -48,8 +48,9 @@ x-spiri-settings:
   - env: CLOUD_LINK_URL
     label: Cloud address
     help: >-
-      The organization's Drones app, e.g. https://drones.example.spiri.ca.
-      Set, the Spiri Cloud page links only there; empty, it asks.
+      The organization's Drones app, e.g. https://drones.example.spiri.ca,
+      or the cloud's own address (example.spiri.ca), which finds its drones.
+      subdomain. Set, the Spiri Cloud page links only there; empty, it asks.
     default: ""
   - env: CLOUD_LINK_NAME
     label: Robot name
