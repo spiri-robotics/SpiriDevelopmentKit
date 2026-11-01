@@ -115,10 +115,12 @@ $ uvx spiriconfig docker settings mu-1 SDK_SOURCE="$PWD/SpiriDevelopmentKit"
 ```
 
 Its other settings are its name, its MAVLink system ID, the port
-QGroundControl connects to, and *Gimbal camera*. The defaults are fine. The
-gimbal camera is off by default: turn it on for a 3-axis gimbal with a camera
-under the airframe, which you point from QGroundControl like any ArduPilot
-mount and watch in the debug map's *Cameras* applet.
+QGroundControl connects to, *Gimbal camera* and *Gimbal rangefinder*. The
+defaults are fine. The gimbal camera is off by default: turn it on for a
+3-axis gimbal with a camera under the airframe, which you point from
+QGroundControl like any ArduPilot mount and watch in the debug map's
+*Cameras* applet. *Gimbal rangefinder* adds a laser rangefinder along the
+camera's axis, which ArduPilot reports as rangefinder 1.
 
 Build it and start it:
 

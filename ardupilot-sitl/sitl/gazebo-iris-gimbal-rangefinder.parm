@@ -1,0 +1,29 @@
+# The gimbal's rangefinder, added to SITL's defaults when the robot has one
+# (ROBOT_RANGEFINDER, with ROBOT_GIMBAL). sim-agent's model has a single-point
+# laser rangefinder along the camera's axis, which the ArduPilotPlugin sends as
+# rng_1; type 100 reads it, and it reaches MAVLink as DISTANCE_SENSOR id 0.
+#
+# ArduPilot only puts a rangefinder on MAVLink as an RNGFND, which it takes
+# to be fixed to the airframe. A mount driver's rangefinder (Siyi, Topotek,
+# Viewpro) goes to the log and Lua only. So where it points comes from the
+# gimbal's attitude (GIMBAL_DEVICE_ATTITUDE_STATUS), not from the message.
+
+RNGFND1_TYPE     100
+# DISTANCE_SENSOR carries centimetres in a uint16, so 655 m at most. The
+# sensor in rangefinder.sdf reaches as far, and nearer than MIN, so a close
+# target is out of range low here.
+RNGFND1_MIN      0.2
+RNGFND1_MAX      650
+
+# It turns with the gimbal, so it isn't the downward rangefinder (25) Copter
+# would take as height above ground: flight code, surface tracking and the
+# EKF only read that one. Forward (0) is only read by collision avoidance,
+# and only through the proximity RangeFinder driver (PRXn_TYPE 4), which is
+# off here. Never turn that on with a gimbal rangefinder: avoidance would
+# take whatever the gimbal looks at for an obstacle dead ahead. QGC draws
+# the reading as an arc ahead of the vehicle too, for the same reason.
+RNGFND1_ORIENT   0
+
+# A camera's rangefinder doesn't decide whether the drone can fly: skip the
+# rangefinder arming check (bit 15).
+ARMING_SKIPCHK   32768

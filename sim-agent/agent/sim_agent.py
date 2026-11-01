@@ -10,7 +10,9 @@ us, and create it again.
 The model is rendered from iris.sdf: named after the robot, with its
 ArduPilotPlugin listening on 9002 + 10 * index, where this robot's SITL sends.
 With ROBOT_GIMBAL it carries a 3-axis gimbal, driven by SITL's mount outputs,
-and a camera publishing on /model/<name>/gimbal/image.
+and a camera publishing on /model/<name>/gimbal/image. With ROBOT_RANGEFINDER
+too, the gimbal has a single-point laser rangefinder along the camera's axis, on
+/model/<name>/gimbal/range, which the ArduPilotPlugin sends SITL as rng_1.
 
     @sdk/sim-agent/<name>/respawn   remove the model and spawn it again, at
                                     its spawn pose and at rest. debug-map's
@@ -40,6 +42,9 @@ INDEX = int(os.environ.get("ROBOT_INDEX") or 0)
 # A gimbal camera under the airframe; the robot's setting, as SpiriConfig
 # writes a switch. ardupilot-sitl reads the same variable for its mount.
 GIMBAL = os.environ.get("ROBOT_GIMBAL", "").strip().lower() in {"true", "1", "yes", "on"}
+# A rangefinder on that gimbal, along the camera's axis; nothing without one.
+# ardupilot-sitl reads the same variable for its RNGFND1.
+RANGEFINDER = GIMBAL and os.environ.get("ROBOT_RANGEFINDER", "").strip().lower() in {"true", "1", "yes", "on"}
 CAMERA = {
     "camera_width": int(os.environ.get("CAMERA_WIDTH") or 640),
     "camera_height": int(os.environ.get("CAMERA_HEIGHT") or 480),
@@ -156,8 +161,16 @@ def model_sdf() -> str:
         fdm_port=9002 + 10 * INDEX,
         # Side by side along y, 2 m apart, so robots don't spawn inside each other.
         pose=f"0 {2 * INDEX} 0.2 0 0 0",
-        gimbal=render("gimbal.sdf", name=NAME, **CAMERA) if GIMBAL else "",
+        gimbal=render(
+            "gimbal.sdf",
+            name=NAME,
+            rangefinder=render("rangefinder.sdf", name=NAME) if RANGEFINDER else "",
+            **CAMERA,
+        )
+        if GIMBAL
+        else "",
         gimbal_controls=render("gimbal-controls.sdf", name=NAME) if GIMBAL else "",
+        rangefinder_feed=render("rangefinder-feed.sdf", name=NAME) if RANGEFINDER else "",
     )
 
 
@@ -252,7 +265,7 @@ def main() -> None:
         with spawning:
             return spawn(session, world)
 
-    log(f"{NAME} via {ROUTER}" + (", with a gimbal camera" if GIMBAL else ""))
+    log(f"{NAME} via {ROUTER}" + (", with a gimbal camera" if GIMBAL else "") + (" and rangefinder" if RANGEFINDER else ""))
     with zenoh.open(conf) as session:
         session.liveliness().declare_subscriber("@gz/**", on_token, history=True)
         # Spawning blocks on the world's replies, so not in zenoh's callback.

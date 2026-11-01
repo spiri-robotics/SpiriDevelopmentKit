@@ -18,6 +18,8 @@ services:
       ROBOT_SYSID: ${ROBOT_SYSID:-1}
       # Whether it has a gimbal camera, whose mount SITL then drives.
       ROBOT_GIMBAL: ${ROBOT_GIMBAL:-false}
+      # And whether that gimbal has a rangefinder, which SITL then reads.
+      ROBOT_RANGEFINDER: ${ROBOT_RANGEFINDER:-false}
       # Empty: the world's <spherical_coordinates>, read from gazebo-assets.
       # Set as lat,lon,alt,heading only to fly somewhere the world isn't.
       SITL_HOME: ${SITL_HOME:-}

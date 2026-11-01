@@ -32,6 +32,9 @@ services:
       SPIRI_MAV_SYSID: "254"
       # Gimbal 1 carries the robot's first camera (sim-camera-ingress).
       SPIRI_MAV_GIMBAL_CAMERAS: '{"1": ["${ROBOT_NAME:-mu-1}/camera1"]}'
+      # And its rangefinder, if it has one, is ArduPilot's rangefinder 1:
+      # DISTANCE_SENSOR id 0. SpiriMav shows it once that reports.
+      SPIRI_MAV_GIMBAL_RANGEFINDERS: '{"1": 0}'
 
 networks:
   spirisynq:

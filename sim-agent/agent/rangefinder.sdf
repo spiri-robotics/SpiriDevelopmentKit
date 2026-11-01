@@ -1,0 +1,36 @@
+        <!--
+          The gimbal's single-point laser rangefinder, when the robot has one
+          (ROBOT_RANGEFINDER): inlined into gimbal.sdf's pitch_link by
+          sim_agent.py. Gazebo's laser sensor is gpu_lidar; with one ray,
+          posed as the camera is, it measures to whatever is at the middle
+          of the picture, exactly: how far off a real one is, SpiriMav's
+          configured accuracies say, and the debug map draws. The
+          ArduPilotPlugin reads it (rangefinder-feed.sdf); ardupilot-sitl's
+          gazebo-iris-gimbal-rangefinder.parm sets the limits it reports.
+        -->
+        <sensor name="rangefinder" type="gpu_lidar">
+          <frame_id>pitch_link</frame_id>
+          <pose>0 0 0 -1.57 -1.57 0</pose>
+          <topic>/model/$name/gimbal/range</topic>
+          <lidar>
+            <scan>
+              <horizontal>
+                <samples>1</samples>
+                <min_angle>0</min_angle>
+                <max_angle>0</max_angle>
+              </horizontal>
+            </scan>
+            <range>
+              <!--
+                Nearer than RNGFND1_MIN (0.2 m), so ArduPilot reports a close
+                target as out of range low: gpu_lidar starts its ray at
+                <min>, and one starting past the ground sees what's behind it.
+              -->
+              <min>0.05</min>
+              <max>650</max>
+              <resolution>0.1</resolution>
+            </range>
+          </lidar>
+          <always_on>1</always_on>
+          <update_rate>10</update_rate>
+        </sensor>

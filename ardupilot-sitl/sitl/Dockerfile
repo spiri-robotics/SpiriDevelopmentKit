@@ -15,6 +15,12 @@ ARG ARDUPILOT_REF=Copter-4.7.2
 RUN git clone --depth 1 --branch ${ARDUPILOT_REF} --recurse-submodules --shallow-submodules \
       https://github.com/ArduPilot/ardupilot /src/ardupilot
 WORKDIR /src/ardupilot
+# Fixes from ArduPilot master, until a Copter release has them. 0001: the
+# JSON backend's rng_N fields reach the rangefinders (the gimbal's,
+# gazebo-iris-gimbal-rangefinder.parm); in 4.7 rng_1 only lands when euler
+# attitude is sent too, which the ArduPilotPlugin never does.
+COPY patches /src/patches
+RUN git apply /src/patches/*.patch
 RUN ./waf configure --board sitl && ./waf copter
 
 
@@ -28,7 +34,7 @@ COPY --from=build /src/ardupilot/build/sitl/bin/arducopter /usr/local/bin/arduco
 COPY --from=build /src/ardupilot/Tools/autotest/default_params/copter.parm \
                   /src/ardupilot/Tools/autotest/default_params/gazebo-iris.parm \
                   /usr/share/ardupilot/
-COPY gazebo-iris-gimbal.parm /usr/share/ardupilot/
+COPY gazebo-iris-gimbal.parm gazebo-iris-gimbal-rangefinder.parm /usr/share/ardupilot/
 COPY sitl-entrypoint.sh /usr/local/bin/sitl-entrypoint
 
 # eeprom.bin (parameters) and logs, kept across restarts.

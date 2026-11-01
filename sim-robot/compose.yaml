@@ -8,7 +8,8 @@
 # The robot's identity reaches its apps through the environment of its
 # SpiriConfig, which compose reads when it starts them: ardupilot-sitl takes
 # its MAVLink system ID from ROBOT_SYSID, and it and sim-agent learn from
-# ROBOT_GIMBAL whether the airframe carries a gimbal camera. A real Mu's OS
+# ROBOT_GIMBAL whether the airframe carries a gimbal camera, and from
+# ROBOT_RANGEFINDER whether that gimbal has a rangefinder. A real Mu's OS
 # sets the same variables.
 #
 # Inside, a robot is networked like a real Mu: it runs the Mu's own
@@ -42,6 +43,14 @@ x-spiri-settings:
       as mount 1, and sim-camera-ingress publishes its picture on SpiriSynq.
       Takes effect when the robot's apps restart.
     default: "false"
+  - env: ROBOT_RANGEFINDER
+    widget: switch
+    label: Gimbal rangefinder
+    help: >-
+      A laser rangefinder on the gimbal, along the camera's axis, which
+      ArduPilot reports as rangefinder 1 (MAVLink DISTANCE_SENSOR). Needs
+      Gimbal camera. Takes effect when the robot's apps restart.
+    default: "false"
   - env: SDK_SOURCE
     label: SpiriDevelopmentKit checkout
     help: >-
@@ -60,6 +69,7 @@ services:
       ROBOT_NAME: ${ROBOT_NAME:-mu-1}
       ROBOT_SYSID: ${ROBOT_SYSID:-1}
       ROBOT_GIMBAL: ${ROBOT_GIMBAL:-false}
+      ROBOT_RANGEFINDER: ${ROBOT_RANGEFINDER:-false}
       # Optional: the appliance's pull-through registry, e.g. http://registry:5000
       REGISTRY_MIRROR: ${REGISTRY_MIRROR:-}
     volumes:

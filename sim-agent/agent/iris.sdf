@@ -2,7 +2,8 @@
 <!--
   The simulated Mu: ardupilot_gazebo's iris_with_ardupilot (at the ref the
   gazebo image pins), templated by sim_agent.py with the robot's name, pose and FDM port,
-  and with gimbal.sdf and gimbal-controls.sdf when it has a gimbal.
+  and with gimbal.sdf and gimbal-controls.sdf when it has a gimbal, and
+  rangefinder.sdf and rangefinder-feed.sdf when that has a rangefinder.
 -->
 <sdf version="1.9">
   <model name="$name">
@@ -272,6 +273,7 @@ $gimbal
         <controlVelocitySlowdownSim>1</controlVelocitySlowdownSim>
       </control>
 $gimbal_controls
+$rangefinder_feed
     </plugin>
 
   </model>

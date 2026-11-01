@@ -15,10 +15,11 @@ services:
     environment:
       ZENOH_CONNECT: tcp/zenoh-router:7447
       # The robot's, from the environment of its SpiriConfig: its name, which
-      # the model is named after, and whether its airframe carries a gimbal
-      # camera.
+      # the model is named after, whether its airframe carries a gimbal
+      # camera, and whether the gimbal has a rangefinder.
       ROBOT_NAME: ${ROBOT_NAME:-mu-1}
       ROBOT_GIMBAL: ${ROBOT_GIMBAL:-false}
+      ROBOT_RANGEFINDER: ${ROBOT_RANGEFINDER:-false}
 
 networks:
   spirisynq:

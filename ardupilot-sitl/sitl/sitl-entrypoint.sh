@@ -42,9 +42,20 @@ printf 'SYSID_THISMAV %s\n' "$ROBOT_SYSID" > identity.parm
 # A gimbal camera (ROBOT_GIMBAL, as SpiriConfig writes a switch): its mount
 # drives SERVO9-11, which sim-agent's model takes as the gimbal's joints.
 defaults=/usr/share/ardupilot/copter.parm,/usr/share/ardupilot/gazebo-iris.parm
-case "$(echo "${ROBOT_GIMBAL:-}" | tr '[:upper:]' '[:lower:]')" in
-	true | 1 | yes | on) defaults="$defaults,/usr/share/ardupilot/gazebo-iris-gimbal.parm" ;;
-esac
+on() {
+	case "$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+		true | 1 | yes | on) return 0 ;;
+	esac
+	return 1
+}
+if on "${ROBOT_GIMBAL:-}"; then
+	defaults="$defaults,/usr/share/ardupilot/gazebo-iris-gimbal.parm"
+	# Its rangefinder (ROBOT_RANGEFINDER), which the ArduPilotPlugin sends as
+	# rng_1. It rides on the gimbal, so it means nothing without one.
+	if on "${ROBOT_RANGEFINDER:-}"; then
+		defaults="$defaults,/usr/share/ardupilot/gazebo-iris-gimbal-rangefinder.parm"
+	fi
+fi
 
 echo "sitl: $(hostname) sysid $ROBOT_SYSID, home $SITL_HOME," \
 	"world $sim:$((9002 + 10 * ROBOT_INDEX)), MAVLink to udp:$MAVLINK_ROUTER"

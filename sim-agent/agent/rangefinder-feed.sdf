@@ -1,0 +1,11 @@
+      <!--
+        The gimbal's rangefinder, sent to SITL as rng_1 (RNGFND1_TYPE 100,
+        ardupilot-sitl's gazebo-iris-gimbal-rangefinder.parm). Inlined into
+        the ArduPilotPlugin by sim_agent.py when the robot has one.
+      -->
+      <sensor>
+        <!-- Only a label: the plugin logs it. -->
+        <type>rangefinder</type>
+        <index>1</index>
+        <topic>/model/$name/gimbal/range</topic>
+      </sensor>
