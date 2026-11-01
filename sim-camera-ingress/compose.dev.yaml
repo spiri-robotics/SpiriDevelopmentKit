@@ -4,3 +4,5 @@ services:
   camera-ingress:
     image: sdk-sim-camera-ingress:dev
     build: ingress
+  camera-hud:
+    image: sdk-sim-camera-ingress:dev

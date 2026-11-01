@@ -19,6 +19,46 @@ services:
       # default camera everything else looks for: <robot>/camera1.
       SPIRICAMERA_SOURCE: gz://model/${ROBOT_NAME:-mu-1}/gimbal/image
       SPIRICAMERA_TOPIC: camera1
+      # It's on gimbal 1, looking along it, so it has a pose and an overlay
+      # can draw on places in the world (home, the ROI) where they are in
+      # its picture. Its HUD variant follows it by itself.
+      SPIRICAMERA_RELATIVE_TO: ${ROBOT_NAME:-mu-1}/robot_gimbal1
+      SPIRI_SYNQ_BASE_TOPIC: ${ROBOT_NAME:-mu-1}
+      SPIRICAMERA_QUALITY: ${QUALITY:-80}
+      SPIRICAMERA_FRAMERATE: ${FRAMERATE:-10}
+
+  # Each camera has a HUD variant, hud/<camera>: the same picture with the
+  # HUD's overlays drawn on it, so the camera's own frames stay clean for
+  # whatever processes them. It's another SpiriCamera, reading the camera's
+  # frames over SpiriSynq (spirisynq://) rather than the sim, so it is the
+  # same whether the camera is simulated or real. It draws SpiriMav's
+  # widgets, HUD_WIDGETS (ingress/hud.py), each once SpiriMav publishes it:
+  # the rangefinder's only once one reports, so a robot without one has none.
+  camera-hud:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-camera-ingress:edge
+    command: hud
+    restart: unless-stopped
+    networks:
+      - spirisynq
+    environment:
+      # SpiriMav's widgets, by topic: the generic ones, under hud/widgets,
+      # any camera's to show (the virtual horizon, heading tape, status,
+      # height and speeds, batteries, and where gimbal 1 points), and gimbal
+      # 1's rangefinder reticle and reading, which is camera1's own, as
+      # gimbal 1 carries it. And markers on home and the ROI, drawn where
+      # they are in the picture, while they're in shot.
+      HUD_WIDGETS: >-
+        ${ROBOT_NAME:-mu-1}/hud/widgets/horizon
+        ${ROBOT_NAME:-mu-1}/hud/widgets/heading
+        ${ROBOT_NAME:-mu-1}/hud/widgets/status
+        ${ROBOT_NAME:-mu-1}/hud/widgets/flight
+        ${ROBOT_NAME:-mu-1}/hud/widgets/battery
+        ${ROBOT_NAME:-mu-1}/hud/widgets/gimbal1
+        ${ROBOT_NAME:-mu-1}/robot_gimbal1_range_hud
+        ${ROBOT_NAME:-mu-1}/robot_home_hud
+        ${ROBOT_NAME:-mu-1}/robot_roi_hud
+      SPIRICAMERA_SOURCE: spirisynq://${ROBOT_NAME:-mu-1}/camera1
+      SPIRICAMERA_TOPIC: hud/camera1
       SPIRI_SYNQ_BASE_TOPIC: ${ROBOT_NAME:-mu-1}
       SPIRICAMERA_QUALITY: ${QUALITY:-80}
       SPIRICAMERA_FRAMERATE: ${FRAMERATE:-10}
