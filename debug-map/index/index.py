@@ -25,6 +25,10 @@ what they look at, not on how much is published.
     @sdk/index/watch         payload: a Gazebo topic's key. Receive its
                              messages for the next WATCH_FOR seconds; ask
                              again to keep them coming.
+    @sdk/index/reset         forget every key (but live Gazebo topics) and
+                             start a new epoch; keys return as they're next
+                             published. Clears out keys whose publisher went
+                             away without deleting them.
 
 Gazebo's topics are keys too, `@/<partition>@/<topic>`, listed from their
 publishers' liveliness tokens with their message type as the encoding.
@@ -276,6 +280,20 @@ class Index:
                     self.rev += 1
                     k.rev = self.rev
 
+    # Start over: forget every key but the Gazebo topics something still
+    # publishes, and take a new epoch so browsers fetch everything again.
+    # Keys come back as they're next published, so a publisher that went
+    # away without deleting its keys stops showing up.
+    def reset(self):
+        with self.lock:
+            self.keys = {name: k for name, k in self.keys.items() if name in self.gz_publishers}
+            for k in self.keys.values():
+                k.sample = k.preview = None
+                k.count = k.rated = k.size = 0
+                k.rate = 0.0
+            self.epoch = uuid.uuid4().hex[:8]
+        print("zenoh-index: reset", flush=True)
+
     def forget(self):
         old = time.monotonic() - FORGET_AFTER
         with self.lock:
@@ -319,10 +337,15 @@ def main():
         else:
             query.reply_err(f"{key} is not a Gazebo topic")
 
+    def on_reset(query: zenoh.Query):
+        index.reset()
+        query.reply(query.key_expr, b"")
+
     session.declare_subscriber("**", index.on_sample)
     session.declare_queryable("@sdk/index", on_summary)
     session.declare_queryable("@sdk/index/value", on_value)
     session.declare_queryable("@sdk/index/watch", on_watch)
+    session.declare_queryable("@sdk/index/reset", on_reset)
     session.liveliness().declare_subscriber("@gz/**", index.on_gz_token, history=True)
     print(f"zenoh-index: indexing ** via {ROUTER}", flush=True)
 

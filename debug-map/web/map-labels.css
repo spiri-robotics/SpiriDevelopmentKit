@@ -1,0 +1,4 @@
+/* Every label over the map (map-labels.js places them). One size for all:
+   13px, the size of the map's own model labels; layers style the rest. */
+.map-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.map-label { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 13px; line-height: 1.35; }

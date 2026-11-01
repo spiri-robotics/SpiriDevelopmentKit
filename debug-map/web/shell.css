@@ -91,11 +91,11 @@ body[data-sidebar="hidden"] #sidebar { display: none; }
 
 /* Model labels (gz-world.js places them): a name over an arrow at the origin,
    turned to the model's heading on screen (--heading). */
-.gz-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+/* Map labels (map-labels.css has their size and placing). */
 .gz-label {
-  position: absolute; left: 0; top: 0; translate: -50% calc(-100% - 6px);
-  padding: 0 4px; border-radius: 3px; white-space: nowrap; cursor: pointer; pointer-events: auto;
-  font-size: 13px; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000;
+  translate: -50% calc(-100% - 6px);
+  padding: 0 4px; border-radius: 3px; cursor: pointer; pointer-events: auto;
+  color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000;
 }
 .gz-label::after {
   content: ""; position: absolute; left: 50%; bottom: -14px; translate: -50% 0; rotate: var(--heading, 0rad);
@@ -109,7 +109,7 @@ body[data-sidebar="hidden"] #sidebar { display: none; }
 }
 /* A model's height above the ground, beside its drop line's foot. */
 .gz-height {
-  position: absolute; left: 0; top: 0; translate: 4px -50%; white-space: nowrap;
+  translate: 4px -50%;
   font-size: 11px; color: orange; text-shadow: 0 0 3px #000, 0 0 3px #000;
 }
 #sidebar-expand {

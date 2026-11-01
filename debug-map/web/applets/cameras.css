@@ -15,3 +15,28 @@
 .cams .tile button:hover { color: var(--text); }
 .cams .tile img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #000; }
 .cams .tile .info { padding: 3px 6px; color: var(--muted); font-size: 11px; }
+
+/* Overlays: an SVG over the image, letterboxed the same way. Miracode is the
+   font SpiriCamera bundles and burns overlays in with, so text drawn here
+   matches. */
+@font-face { font-family: "Miracode"; src: url("./Miracode.ttf"); }
+.cams .tile .view { position: relative; }
+.cams .tile .overlay { position: absolute; inset: 0; pointer-events: none; font-family: "Miracode", monospace; }
+/* shell.css styles every svg as a line icon. Overlays start from SVG's own
+   defaults instead, and a widget's <svg> that doesn't set these inherits
+   them, as it would anywhere else. */
+.cams .tile .overlay > svg { display: block; width: 100%; height: 100%; fill: black; stroke: none; stroke-width: 1; }
+.cams .tile .overlay > svg svg:not([fill]) { fill: inherit; }
+.cams .tile .overlay > svg svg:not([stroke]) { stroke: inherit; }
+.cams .tile .overlay > svg svg:not([stroke-width]) { stroke-width: inherit; }
+.cams .tile .overlays { padding: 0 6px 4px; font-size: 11px; }
+.cams .tile .overlays summary { color: var(--muted); cursor: pointer; }
+.cams .tile .overlays .screen { display: flex; gap: 4px; align-items: center; margin: 3px 0; }
+.cams .tile .overlays .widgets { display: flex; flex-direction: column; gap: 4px; margin-top: 3px; }
+.cams .tile .overlays .widget { border-left: 2px solid var(--line); padding-left: 6px; }
+.cams .tile .overlays .mode, .cams .tile .overlays .slot { display: flex; gap: 6px; align-items: center; margin: 3px 0; }
+.cams .tile .overlays .topic { display: flex; gap: 4px; align-items: center; font-family: ui-monospace, monospace; word-break: break-all; cursor: pointer; }
+.cams .tile .overlays .widget.off { color: var(--muted); }
+.cams .tile .overlays .status, .cams .tile .overlays .where, .cams .tile .overlays .bind { color: var(--muted); }
+.cams .tile .overlays .status.bad { color: #e8a33d; }
+.cams .tile .overlays .bind { font-family: ui-monospace, monospace; word-break: break-all; }

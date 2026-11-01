@@ -70,8 +70,10 @@ export default {
     collapse.title = "Collapse all";
     const pause = el("button", "", "Pause");
     pause.title = "Freeze the view; keys are still kept up to date";
+    const refresh = el("button", "", "⟳");
+    refresh.title = "Forget every key and list them again as they're next published, dropping ones nothing publishes any more";
     const bar = el("div", "bar");
-    bar.append(filter, expand, collapse, pause);
+    bar.append(filter, expand, collapse, pause, refresh);
     const status = el("div", "status");
     const treeBox = el("div", "tree");
     const detail = el("div", "detail");
@@ -232,6 +234,29 @@ export default {
     const timer = setInterval(showStatus, 1000);
     applyFilter();
 
+    // Have the index forget its keys, and start over here with what it has
+    // left. A summary already on its way is from before, so it's dropped.
+    let generation = 0;
+    refresh.onclick = async () => {
+      refresh.disabled = true;
+      try {
+        const [reply] = await zenoh.query("@sdk/index/reset");
+        if (!reply || reply instanceof Error) throw reply ?? new Error("nothing answered");
+        generation++;
+        tree.clear();
+        problems.clear();
+        objects = {};
+        value = null;
+        epoch = null;
+        rev = 0;
+        showStatus();
+      } catch (e) {
+        console.warn("zenoh-index reset:", e);
+      } finally {
+        refresh.disabled = false;
+      }
+    };
+
     // Apply one summary. Rates come from the index, which sees every message
     // as it arrives. A full summary (since=0) lists every key the index
     // has, so known keys missing from it are gone.
@@ -279,9 +304,10 @@ export default {
       while (!stopped) {
         try {
           const since = rev;
+          const gen = generation;
           const [reply] = await zenoh.query(`@sdk/index?since=${since}`);
           indexUp = !!reply && !(reply instanceof Error);
-          if (indexUp && !stopped) {
+          if (indexUp && !stopped && gen === generation) {
             const summary = JSON.parse(reply.payload().toString());
             if (since && summary.epoch !== epoch) rev = 0;
             else {

@@ -197,6 +197,18 @@ export class PathTree {
     mark(n);
   }
 
+  // Forget every path at once, deleted or not.
+  clear() {
+    for (const c of this.#root.children.values()) if (c.row) this.#hide(c);
+    this.#root.children.clear();
+    this.#root.kids.replaceChildren();
+    Object.assign(this.#root, { hits: 0, total: 0, gone: 0, count: 0, seen: 0, hz: 0 });
+    this.#deleted.clear();
+    this.#dirty.clear();
+    if (this.#selected) this.select(null);
+    this.#touch(this.#root);
+  }
+
   // Deleted paths under each folder, so a folder whose paths are all deleted
   // is struck through too.
   #gone(n, d) {

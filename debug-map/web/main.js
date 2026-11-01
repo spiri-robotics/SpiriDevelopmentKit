@@ -6,6 +6,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import * as gzServices from "./gz-services.js";
 import { Gazebo } from "./gz-transport.js";
 import { GazeboWorld } from "./gz-world.js";
+import { MapLabels } from "./map-labels.js";
 import { bandEditor } from "./coverage-bands.js";
 import { addZenohProtocol, startOfflineLayers } from "./offline-map.js";
 import { Actions, Entities, Layers, startShell } from "./shell.js";
@@ -90,7 +91,10 @@ map.addControl(new TerrainControl({ source: "terrain", exaggeration: 1 }), "top-
 
 // The Gazebo layers: the world's 3D models (see gz-world.js), and labels so
 // they stay findable from afar. Meshes come over HTTP from the asset server.
-const world3d = new GazeboWorld();
+// Every layer's labels, placed together so none overlap (map-labels.js).
+const mapLabels = new MapLabels();
+mapLabels.attach(map);
+const world3d = new GazeboWorld(mapLabels);
 const entities = new Entities();
 
 // Layers by id, for the Layers applet.
@@ -110,7 +114,7 @@ zenohUrl.protocol = zenohUrl.protocol === "https:" ? "wss:" : "ws:";
 const zenoh = new Zenoh(zenohUrl.href);
 addZenohProtocol(zenoh);
 // Every SpiriSynq Position, as a tree of frames (synq-frames.js).
-const frames = new SynqFrames(zenoh);
+const frames = new SynqFrames(zenoh, mapLabels);
 
 // Changing the world, for applets, over zenoh: any model moves through
 // Gazebo's set_pose; a robot resets through its sim-agent, which respawns it.
@@ -396,6 +400,17 @@ map.on("load", () => {
     section: "SpiriSynq",
     info: "Each gimbal camera's view, from its lens, in bands out to set ranges: by default where it recognises a person, then a car (Johnson: 8 px across 0.75 m, 2.3 m). Hidden behind terrain, buildings and Gazebo's models. ▸ to edit the bands",
     details: (el) => bandEditor(el, frames),
+  });
+  layers.add("synq-ranges", "Rangefinders", {
+    get show() {
+      return frames.showRanges;
+    },
+    set show(on) {
+      frames.showRanges = on;
+    },
+  }, {
+    section: "SpiriSynq",
+    info: "Each gimbal rangefinder's reading, along where the gimbal points: a ray to what it hit, with the distance and its configured accuracy, in a cone of the gimbal's configured pointing accuracy; a faint ray to its range when nothing came back",
   });
   // Gazebo, as two layers: the world's 3D models and ground outlines, and
   // its entities' labels, drop lines and heights.

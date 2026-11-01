@@ -36,13 +36,16 @@ import "./synq-frames.css";
 // Position) and rehydrated for their parents and links; poses and mounts then
 // come live from two subscriptions, `**/pose` and `**/mount`, which never
 // match a camera's image however many cameras there are. A key whose topic
-// isn't a known Position (a nested `…/gimbal/pose`, say) is ignored.
+// isn't a known Position (a nested `…/gimbal/pose`, say) is ignored. A
+// SpiriCamera camera is a Position, on what carries it, but isn't a frame
+// here: it's drawn as its carrier's view.
 //
 // Each frame with a pose is a 3D arrow along its x axis: forward for a body
 // in FRD, so it shows heading and pitch, and north for a NED frame. A fin on
 // its top shows roll. Arrows are a fixed size on screen, and each is joined
 // to its parent (relative_to) by a line between the two. Each has a label at
-// it, its topic. Clicking the label opens it: its class, heading, pitch and
+// it, its topic, a map label (map-labels.js), so labels from every layer stay
+// clear of each other. Clicking the label opens it: its class, heading, pitch and
 // roll against local NED, mount (offset and angles in the parent's frame),
 // links, and the pose's 90% accuracy, also drawn as a cylinder around the
 // frame. Clicking again closes it.
@@ -78,6 +81,24 @@ import "./synq-frames.css";
 //
 // A camera's lens comes once from its sr_rehydrate, when a frame first links
 // to it, then live from `**/intrinsics`.
+//
+// Rangefinders, a layer of their own, and the one exception to drawing every
+// Position alike. Where a gimbal's rangefinder hits is a BearingDetection (from
+// SpiriMav): a point in the tree under the gimbal, so it has a pose like any
+// frame, and with it the reading and the beam's accuracies (SPOT_FIELDS),
+// which come with its rehydrate, then live. It isn't a ball: it's drawn along
+// its gimbal's x axis, the beam, as a marker where it hit, in a faint cone
+// out to two rings at the ends of its ± range: from a base at the gimbal as
+// wide as the gimbal's own position error, so the robot's (the GPS's), each
+// ring that plus the pointing error there, and the range that plus the
+// range error (beamRings). "far", nothing within the sensor's max,
+// has no spot, so is a faint ray from the gimbal out to it; "near" has no
+// length to draw, so only the details say so. Its label is just the distance;
+// it opens to the spot's details, as any frame's does: coordinates, and the
+// pose's accuracy, the beam's, the gimbal's and the robot's, summed down the
+// tree by SpiriMav, in the 90% bounds every pose uses. Like the coverage, it's
+// depth-tested against the map, so the terrain, buildings and Gazebo's models
+// hide what's behind them; the label isn't.
 
 const DISCOVER_MS = 5000;
 const ARROW_PX = 48; // arrow length on screen
@@ -86,6 +107,8 @@ const COLOR = 0xbb9af7;
 const FIN_COLOR = 0xe6dcff;
 const OPEN_COLOR = 0xffb86c; // an open frame's arrow, and its accuracy
 const CONE_COLOR = 0x3a9bff;
+const RANGE_COLOR = 0xff5555;
+const HIT_PX = 10; // the hit marker's size on screen
 const FACE_OPACITY = 0.08;
 const EDGE_OPACITY = 0.6;
 
@@ -189,6 +212,37 @@ function angles(q) {
   return [e.x, e.y, e.z].map((r) => (r * 180) / Math.PI);
 }
 
+// A BearingDetection's own fields, besides its pose.
+const SPOT_FIELDS = ["status", "distance", "min", "max", "range_accuracy", "pointing_accuracy"];
+
+// Where a spot along gimbal g's beam might really be, as [distance along the
+// beam, radius] rings: one at the gimbal, as wide as its own position error,
+// and one at either end of the ± range. Along the beam, the spot's range
+// accuracy and the gimbal's position error along it; across, its pointing
+// accuracy at that distance and the gimbal's position error across it (the
+// larger of the two ways). Each a 90% bound, summed in quadrature as
+// Accuracy does down the tree; the gimbal's is its pose's, which is the
+// robot's, the GPS's. Null if nothing is known.
+function beamRings(spot, g) {
+  const { distance: d, range_accuracy: a, pointing_accuracy: p } = spot;
+  const { horizontal: h, vertical: v } = g.pose.accuracy ?? {};
+  if (d == null || (a == null && p == null && h == null && v == null)) return null;
+  const u = new Vector3(1, 0, 0).applyQuaternion(g.inScene); // the beam, ENU
+  const [uh, uz] = [Math.hypot(u.x, u.y), Math.abs(u.z)];
+  const [ph, pv] = [h ?? 0, v ?? 0];
+  const along = Math.hypot(a ?? 0, ph * uh, pv * uz);
+  const across = Math.max(ph, Math.hypot(ph * uz, pv * uh));
+  const tan = Math.tan(((p ?? 0) * Math.PI) / 180);
+  const radius = (r) => Math.hypot(r * tan, across);
+  return [0, Math.max(d - along, 0), d + along].map((r) => [r, radius(r)]);
+}
+
+// A spot's label: its distance. Its accuracy is in its details, opened.
+function spotText(f) {
+  const d = f.spot.distance;
+  return d == null || !f.pose ? "rangefinder" : `${d.toFixed(1)} m`;
+}
+
 const deg = (a) => `${a.toFixed(1)}°`;
 const m = (x) => x.toFixed(2);
 
@@ -216,8 +270,9 @@ export class SynqFrames {
   type = "custom";
   renderingMode = "3d";
 
-  constructor(zenoh) {
+  constructor(zenoh, mapLabels) {
     this.zenoh = zenoh;
+    this.mapLabels = mapLabels;
     this.map = null;
     this.renderer = null;
     this.scene = new Scene();
@@ -251,22 +306,23 @@ export class SynqFrames {
     this.scene.add(sun, new AmbientLight(0xffffff, 0.7), this.lines, this.arrows);
     // Camera coverage: a scene of its own, as it's depth-tested and the rest isn't.
     this.cones = new Group();
-    this.coverage = new Scene().add(this.cones);
+    this.coverage = new Scene();
+    // Rangefinder rays and their hits.
+    this.hitMaterial = new MeshBasicMaterial({ color: RANGE_COLOR });
+    this.rangeMaterial = new LineMaterial({ color: RANGE_COLOR, linewidth: 2.5 });
+    this.farMaterial = new LineMaterial({ color: RANGE_COLOR, linewidth: 1.5, transparent: true, opacity: 0.35 });
+    this.ringMaterial = new LineMaterial({ color: RANGE_COLOR, linewidth: 2 });
+    this.spreadFace = new MeshBasicMaterial({ color: RANGE_COLOR, transparent: true, opacity: 0.12, side: DoubleSide, depthWrite: false });
+    this.ranges = new Group();
+    // Depth-tested as coverage is.
+    this.coverage.add(this.cones, this.ranges);
   }
 
   onAdd(map, gl) {
     this.map = map;
     this.renderer = new WebGLRenderer({ canvas: map.getCanvas(), context: gl });
     this.renderer.autoClear = false;
-    this.overlay = document.createElement("div");
-    this.overlay.className = "sf-labels";
-    this.overlay.hidden = !this.show;
-    map.getCanvasContainer().append(this.overlay);
     this.start();
-  }
-
-  onRemove() {
-    this.overlay.remove();
   }
 
   // The frames: arrows, lines and labels.
@@ -275,8 +331,7 @@ export class SynqFrames {
   }
 
   set show(on) {
-    this.arrows.visible = this.lines.visible = on;
-    if (this.overlay) this.overlay.hidden = !on;
+    this.arrows.visible = this.lines.visible = on; // and the labels: see render
     this.repaint();
   }
 
@@ -287,6 +342,16 @@ export class SynqFrames {
 
   set showCoverage(on) {
     this.cones.visible = on;
+    this.repaint();
+  }
+
+  // Rangefinders.
+  get showRanges() {
+    return this.ranges.visible;
+  }
+
+  set showRanges(on) {
+    this.ranges.visible = on;
     this.repaint();
   }
 
@@ -309,6 +374,10 @@ export class SynqFrames {
     for (const field of ["pose", "mount"]) {
       this.zenoh.subscribe(`**/${field}`, (sample) => this.onSample(field, sample));
     }
+    // A spot's reading, live; only spots take these.
+    for (const field of ["status", "distance", "range_accuracy"]) {
+      this.zenoh.subscribe(`**/${field}`, (sample) => this.onSpotField(field, sample));
+    }
     this.zenoh.subscribe("**/intrinsics", (sample) => this.onLens(sample));
     (async () => {
       for (;;) {
@@ -322,7 +391,7 @@ export class SynqFrames {
     })();
   }
 
-  onSample(field, sample) {
+  onSample(field, sample, convert = toPose) {
     const key = sample.keyexpr().toString();
     // An object's tombstone is a delete on `<topic>/**`.
     if (sample.kind() === SampleKind.DELETE) {
@@ -332,7 +401,21 @@ export class SynqFrames {
     const frame = this.frames.get(key.slice(0, -(field.length + 1)));
     if (!frame) return;
     try {
-      frame[field] = toPose(load(sample.payload().toString()));
+      frame[field] = convert(load(sample.payload().toString()));
+    } catch (e) {
+      console.warn(`frames: ${key}`, e);
+      return;
+    }
+    this.changed();
+  }
+
+  onSpotField(field, sample) {
+    if (sample.kind() === SampleKind.DELETE) return; // onSample removes the frame
+    const key = sample.keyexpr().toString();
+    const frame = this.frames.get(key.slice(0, -(field.length + 1)));
+    if (!frame?.spot) return;
+    try {
+      frame.spot[field] = load(sample.payload().toString()) ?? null;
     } catch (e) {
       console.warn(`frames: ${key}`, e);
       return;
@@ -380,7 +463,10 @@ export class SynqFrames {
     const topics = replies.flatMap((r) => {
       if (r instanceof Error) return [];
       const meta = parse(r.payload().toString());
-      return meta?.classes?.includes("!Position") ? [meta.topic] : [];
+      // A camera is a Position too, but it's drawn as its carrier's view
+      // (camera coverage, below), and rehydrating one brings its frame along.
+      const classes = meta?.classes ?? [];
+      return classes.includes("!Position") && !classes.includes("!CameraBase") ? [meta.topic] : [];
     });
     await Promise.all(topics.map((topic) => this.rehydrate(topic, round)));
     // Gone after two rounds without an answer: one can just be lost.
@@ -408,6 +494,8 @@ export class SynqFrames {
       // Live updates are newer than any snapshot.
       frame.pose ??= toPose(o.pose);
       frame.mount ??= toPose(o.mount);
+      // The exception: a rangefinder spot keeps its reading and beam.
+      frame.spot = frame.cls === "BearingDetection" ? Object.fromEntries(SPOT_FIELDS.map((k) => [k, o[k] ?? null])) : null;
       frame.cameras = frame.links.filter((l) => l.field === "cameras").map((l) => l.to);
       for (const camera of frame.cameras) if (!this.lenses.has(camera)) this.fetchLens(camera);
       this.frames.set(topic, frame);
@@ -419,7 +507,7 @@ export class SynqFrames {
   remove(topic) {
     const frame = this.frames.get(topic);
     if (!frame) return;
-    frame.label?.remove();
+    this.mapLabels.remove(`synq/${topic}`);
     this.frames.delete(topic);
     this.open.delete(topic);
     this.changed();
@@ -440,8 +528,10 @@ export class SynqFrames {
     }
     this.arrows.clear();
     for (const child of [...this.lines.children, ...this.cones.children]) child.geometry.dispose();
+    for (const child of this.ranges.children) if (child.geometry !== POINT) child.geometry.dispose();
     this.lines.clear();
     this.cones.clear();
+    this.ranges.clear();
     if (!placed.length) return;
 
     if (!this.anchor) this.setAnchor([placed[0].lon, placed[0].lat]);
@@ -455,6 +545,7 @@ export class SynqFrames {
     }
 
     for (const f of placed) {
+      if (f.spot) continue; // drawn along its beam, below
       const arrow = new Group();
       arrow.matrixAutoUpdate = false;
       arrow.userData.frame = f;
@@ -467,7 +558,7 @@ export class SynqFrames {
     const parentLines = [];
     for (const f of placed) {
       const parent = this.frames.get(f.parent?.link);
-      if (parent?.pose) parentLines.push(...f.at.toArray(), ...parent.at.toArray());
+      if (parent?.pose && !f.spot) parentLines.push(...f.at.toArray(), ...parent.at.toArray());
     }
     if (parentLines.length) this.lines.add(segments(parentLines, this.parentMaterial));
     for (const f of placed) if (this.isOpen(f)) this.addAccuracy(f);
@@ -478,6 +569,31 @@ export class SynqFrames {
         const lens = this.lenses.get(camera);
         if (lens) this.addCoverage(f, lens);
       }
+    }
+
+    // Spots, placed or not: one with no return still says why.
+    for (const spot of this.frames.values()) {
+      const gimbal = spot.spot && this.frames.get(spot.parent?.link);
+      if (gimbal?.pose?.q && gimbal.at) this.addSpot(gimbal, spot);
+    }
+  }
+
+  // A rangefinder spot along its gimbal's beam: a marker where it hit, in the
+  // beam's ± range, or a plain ray to it if that's unknown; with nothing
+  // within the sensor's max, a faint ray out to it.
+  addSpot(g, f) {
+    const s = f.spot;
+    if (s.status === "ok" && f.pose && f.at) {
+      const rings = beamRings(s, g);
+      if (rings) this.addBounds(g, rings);
+      else this.ranges.add(segments([...g.at.toArray(), ...f.at.toArray()], this.rangeMaterial));
+      const marker = new Mesh(POINT, this.hitMaterial);
+      marker.matrixAutoUpdate = false;
+      marker.userData.at = f.at;
+      this.ranges.add(marker);
+    } else if (s.status === "far" && s.max) {
+      const end = new Vector3(s.max, 0, 0).applyQuaternion(g.inScene).add(g.at);
+      this.ranges.add(segments([...g.at.toArray(), ...end.toArray()], this.farMaterial));
     }
   }
 
@@ -527,6 +643,38 @@ export class SynqFrames {
     this.cones.add(segments(near.flatMap((c) => [...f.at.toArray(), ...c.toArray()]), this.rayMaterial));
   }
 
+  // A beam's ± range along frame f's x axis (beamRings): a ring around it at
+  // each end, in a faint cone out to the far one from a base at the frame as
+  // wide as its own position error.
+  addBounds(f, rings) {
+    const n = 48;
+    const edges = [];
+    const circles = rings.map(([distance, radius]) => {
+      const ring = [];
+      for (let i = 0; i <= n; i++) {
+        const a = (2 * Math.PI * i) / n;
+        ring.push(new Vector3(distance, radius * Math.cos(a), radius * Math.sin(a)).applyQuaternion(f.inScene).add(f.at));
+      }
+      return ring;
+    });
+    // The ± range's ends outlined; the one at the gimbal is the cone's base.
+    for (const ring of circles.slice(1)) {
+      for (let i = 0; i < n; i++) edges.push(...ring[i].toArray(), ...ring[i + 1].toArray());
+    }
+    // From the base at the gimbal out to the far ring.
+    const [base, far] = [circles[0], circles.at(-1)];
+    const tris = [];
+    for (let i = 0; i < n; i++) {
+      tris.push(...base[i].toArray(), ...far[i].toArray(), ...far[i + 1].toArray());
+      tris.push(...base[i].toArray(), ...far[i + 1].toArray(), ...base[i + 1].toArray());
+    }
+    const faces = new BufferGeometry();
+    faces.setAttribute("position", new Float32BufferAttribute(tris, 3));
+    const cone = new Mesh(faces, this.spreadFace);
+    cone.frustumCulled = false;
+    this.ranges.add(cone, segments(edges, this.ringMaterial));
+  }
+
   // The pose's 90% accuracy: circles of the horizontal radius at the frame and
   // at ± the vertical, joined at the sides. Level, whatever the frame's tilt.
   addAccuracy(f) {
@@ -547,7 +695,8 @@ export class SynqFrames {
       const sides = r != null ? [[r, 0], [-r, 0], [0, r], [0, -r]] : [[0, 0]];
       for (const [x, y] of sides) lines.push(x, y, -v, x, y, v);
     }
-    this.lines.add(segments(lines.map((c, i) => c + f.at.getComponent(i % 3)), this.accuracyMaterial));
+    // A spot's shows with the rangefinders, as it does.
+    (f.spot ? this.ranges : this.lines).add(segments(lines.map((c, i) => c + f.at.getComponent(i % 3)), this.accuracyMaterial));
   }
 
   setAnchor(lngLat) {
@@ -573,27 +722,29 @@ export class SynqFrames {
     this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
     const canvas = this.map.getCanvas();
     this.size = [canvas.clientWidth, canvas.clientHeight];
-    for (const material of [this.parentMaterial, this.accuracyMaterial, this.rayMaterial, this.bandEdge]) {
+    for (const material of [this.parentMaterial, this.accuracyMaterial, this.rayMaterial, this.bandEdge, this.rangeMaterial, this.farMaterial, this.ringMaterial]) {
       material.resolution.set(...this.size);
     }
 
-    // Arrows a fixed size on screen: scaled by how many pixels a metre is there.
-    for (const arrow of this.arrows.children) {
-      const f = arrow.userData.frame;
-      const pxPerM = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((d) => this.pixels(f.at, f.at.clone().add(new Vector3(...d)))));
-      const scale = pxPerM > 0 ? ARROW_PX / pxPerM : 1;
-      arrow.matrix.compose(f.at, f.inScene, new Vector3(scale, scale, scale));
-      arrow.matrixWorldNeedsUpdate = true;
-    }
+    // Arrows and hit markers a fixed size on screen: scaled by how many
+    // pixels a metre is there. The marker is a ball 0.3 across.
+    const fixed = (object, at, q, px) => {
+      const pxPerM = Math.max(...[[1, 0, 0], [0, 1, 0], [0, 0, 1]].map((d) => this.pixels(at, at.clone().add(new Vector3(...d)))));
+      const scale = pxPerM > 0 ? px / pxPerM : 1;
+      object.matrix.compose(at, q, new Vector3(scale, scale, scale));
+      object.matrixWorldNeedsUpdate = true;
+    };
+    for (const arrow of this.arrows.children) fixed(arrow, arrow.userData.frame.at, arrow.userData.frame.inScene, ARROW_PX);
+    for (const marker of this.ranges.children) if (marker.userData.at) fixed(marker, marker.userData.at, UNTURNED, HIT_PX / 0.3);
     this.renderer.resetState();
-    // Coverage first, against the map's depth, so the ground, buildings and
-    // Gazebo's models hide it.
-    if (this.cones.visible) this.renderer.render(this.coverage, this.camera);
+    // Coverage and rangefinders first, against the map's depth, so the
+    // ground, buildings and Gazebo's models hide them.
+    if (this.cones.visible || this.ranges.visible) this.renderer.render(this.coverage, this.camera);
     // The frames over the map and the Gazebo models, so a robot's frames show
     // inside its model, but depth-tested among themselves.
     this.renderer.clearDepth();
     this.renderer.render(this.scene, this.camera);
-    if (this.show) this.placeLabels();
+    this.placeLabels();
   }
 
   // Scene point to [x, y] on screen, or null behind the camera.
@@ -611,12 +762,13 @@ export class SynqFrames {
 
   // A label: its topic, which opens and closes it, over its details. Pressing
   // on it doesn't reach the map, so the details can be selected and copied
-  // without dragging the map.
+  // without dragging the map. A spot's reads its distance instead (spotText),
+  // and goes before the others.
   label(f) {
     if (!f.label) {
-      const label = el("div", "sf-label");
+      const label = el("div", f.spot ? "sf-label sf-spot" : "sf-label");
       const head = el("div", "sf-head");
-      head.append(el("b", "", f.topic));
+      head.append(el("b", "", f.spot ? spotText(f) : f.topic));
       head.onclick = () => {
         if (!this.open.delete(f.topic)) this.open.add(f.topic);
         this.changed();
@@ -625,8 +777,7 @@ export class SynqFrames {
         label.addEventListener(type, (e) => e.stopPropagation());
       }
       label.append(head, el("div", "sf-body"));
-      this.overlay.append(label);
-      f.label = label;
+      f.label = this.mapLabels.add(`synq/${f.topic}`, label, { priority: f.spot ? 1 : 0 });
     }
     return f.label;
   }
@@ -672,6 +823,27 @@ export class SynqFrames {
         if (range) rows.push([["k", `  ${band.name || "band"} to `], ["", `${range.toFixed(0)} m`]]);
       }
     }
+    // A spot's reading, and the beam it was taken along: the rest of its
+    // accuracy is the tree's, in the row above.
+    const s = f.spot;
+    if (s) {
+      const reading =
+        s.status === "ok" && s.distance != null
+          ? [["", `${m(s.distance)} m`]]
+          : s.status === "far"
+            ? [["k", "nothing within "], ["", `${s.max} m`]]
+            : s.status === "near"
+              ? [["k", "nearer than "], ["", `${m(s.min)} m`]]
+              : [["k", "silent"]];
+      rows.push(
+        [["k", "reading: "], ...reading, ["k", s.min != null ? `  (${m(s.min)}–${s.max} m)` : ""]],
+        [
+          ["k", "beam: "],
+          ["acc", s.range_accuracy != null ? `± ${m(s.range_accuracy)} m along` : "along unknown"],
+          ["acc", s.pointing_accuracy != null ? `, ± ${s.pointing_accuracy.toFixed(1)}° off it (90%, configured)` : ", pointing unknown"],
+        ],
+      );
+    }
     return rows;
   }
 
@@ -705,41 +877,25 @@ export class SynqFrames {
     return changed;
   }
 
-  // Each label just below-right of its frame's origin. Frames close together
-  // on screen stack their labels downward rather than overlap; an opened
-  // label grows downward, so it stays under the pointer to close it.
+  // Each label anchored at its frame's origin, opened or not; the map labels
+  // place it below-right of it, clear of the rest. An opened label grows
+  // downward, so it stays under the pointer to close it.
   placeLabels() {
-    const placed = [];
-    const items = [];
     for (const f of this.frames.values()) {
+      // A spot's label shows with the rangefinders, the rest with the frames.
+      if (!(f.spot ? this.ranges.visible : this.show)) continue;
       const at = f.at && f.pose && this.toScreen(f.at);
-      if (!at) {
-        if (f.label) f.label.hidden = true;
-        continue;
-      }
+      if (!at) continue;
       const label = this.label(f);
-      label.hidden = false;
-      const open = this.isOpen(f);
-      let resized = !f.size || label.classList.contains("open") !== open;
-      label.classList.toggle("open", open);
-      if (open && this.fill(label.lastChild, this.details(f))) resized = true;
-      if (resized) f.size = [label.offsetWidth, label.offsetHeight];
-      items.push({ f, label, at });
-    }
-    items.sort((a, b) => a.at[1] - b.at[1] || a.f.topic.localeCompare(b.f.topic));
-    for (const { f, label, at } of items) {
-      const box = { x: at[0] + 8, y: at[1] + 8, w: f.size[0], h: f.size[1] };
-      for (let moved = true; moved; ) {
-        moved = false;
-        for (const o of placed) {
-          if (box.x < o.x + o.w && o.x < box.x + box.w && box.y < o.y + o.h && o.y < box.y + box.h) {
-            box.y = o.y + o.h + 2;
-            moved = true;
-          }
-        }
+      if (f.spot) {
+        const text = spotText(f);
+        const head = label.firstChild.firstChild;
+        if (head.textContent !== text) head.textContent = text;
       }
-      placed.push(box);
-      label.style.transform = `translate(${box.x.toFixed(1)}px, ${box.y.toFixed(1)}px)`;
+      const open = this.isOpen(f);
+      label.classList.toggle("open", open);
+      if (open) this.fill(label.lastChild, this.details(f));
+      this.mapLabels.at(`synq/${f.topic}`, at);
     }
   }
 }

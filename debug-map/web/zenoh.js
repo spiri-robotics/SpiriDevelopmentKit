@@ -128,6 +128,12 @@ export class Zenoh extends EventTarget {
     });
   }
 
+  // A put: encoding is a string such as "application/yaml".
+  async put(key, payload, { encoding } = {}) {
+    const session = await this.session();
+    await session.put(key, payload, { encoding });
+  }
+
   // sub.subscriber is whatever has an undeclare(): a subscriber or a token.
   async #declare(session, sub) {
     try {
