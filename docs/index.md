@@ -10,6 +10,7 @@ and ship them to real hardware.
 :caption: Contents
 
 platform
+components
 getting-started
 architecture
 ```

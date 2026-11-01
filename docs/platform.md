@@ -243,5 +243,5 @@ simulator. See [Getting started](getting-started.md) to run it.
 | [SpiriConfig](https://github.com/spiri-robotics/SpiriConfig) | The robot's app manager. |
 | [SpiriSynq](https://github.com/spiri-robotics/SpiriSynq) | Objects over zenoh. |
 | [SpiriCamera](https://github.com/spiri-robotics/SpiriCamera) | Cameras on SpiriSynq. |
-| [SpiriMav](https://github.com/spiri-robotics/SpiriMav) | Mirrors the flight controller's state onto SpiriSynq, so apps can read it without speaking MAVLink. |
+| [SpiriMav](https://github.com/spiri-robotics/SpiriMav) | The aircraft in the shared world: the robot's position that everything it sees is placed by, and one interface to every robot. |
 | [Appsource-Spiri-Simulation](https://github.com/spiri-robotics/Appsource-Spiri-Simulation) | Released versions of the simulation's apps. |

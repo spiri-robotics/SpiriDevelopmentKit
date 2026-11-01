@@ -208,6 +208,18 @@ relay in the middle the camera's adaptive bitrate doesn't see the viewer's
 link: the camera's viewer is MediaMTX, on loopback. In the sim,
 `sim-camera-ingress` publishes the gimbal camera at `<robot>/camera1`.
 
+Each camera has a HUD variant, `hud/<camera>` (`<robot>/hud/camera1`): the
+same picture with the HUD's overlays (SpiriCamera HudWidgets) drawn on it.
+It is a second SpiriCamera reading the camera's frames over SpiriSynq, so
+the camera's own frames stay clean for anything that processes them, and
+the HUD is drawn the same way whether the camera is simulated or real.
+SpiriMav publishes the overlays, for what the robot reports it has. The
+generic ones, any camera's to show, are under `hud/widgets/`
+(`<robot>/hud/widgets/horizon`): a virtual horizon, heading, status, height
+and speeds, batteries, and each gimbal's pointing. A gimbal's rangefinder
+reticle, drawn on its cameras' axis, stays with the gimbal
+(`<robot>/robot_gimbal1_range_hud`), once its sensor reports.
+
 ## Gazebo and ArduPilot
 
 ### The world is stock Gazebo
@@ -306,6 +318,37 @@ environment:
 - `ardupilot-sitl` adds ardupilot_gazebo's `gazebo-iris-gimbal.parm`, so
   mount 1 drives SERVO9–11, which the ArduPilotPlugin turns into joint
   commands. The gimbal is pointed the way a real one is, over MAVLink.
+
+Its **Gimbal rangefinder** setting (`ROBOT_RANGEFINDER`, which only counts
+with a gimbal) adds a single-point laser rangefinder along the camera's axis,
+so it measures to whatever is at the middle of the picture:
+
+- `sim-agent` puts Gazebo's laser sensor, `gpu_lidar` with one ray, on the
+  gimbal's pitch link (`rangefinder.sdf`), publishing
+  `/model/<name>/gimbal/range`, to 650 m at 10 Hz. The ArduPilotPlugin
+  subscribes to it and sends SITL the reading as `rng_1`.
+- `ardupilot-sitl` adds `gazebo-iris-gimbal-rangefinder.parm`: rangefinder 1
+  is SITL's own type (100), so the reading reaches MAVLink as
+  `DISTANCE_SENSOR` id 0, as a real one wired to the flight controller does.
+
+ArduPilot puts a rangefinder on MAVLink only as an `RNGFND`, which it takes
+to be fixed to the airframe; a mount driver's rangefinder (Siyi, Topotek,
+Viewpro) goes to the log and Lua only. So the message's orientation says
+nothing about where it points, which is the gimbal's attitude
+(`GIMBAL_DEVICE_ATTITUDE_STATUS`). It's set forward rather than down, since a
+downward rangefinder is one Copter takes as height above ground, and its
+arming check is skipped (`ARMING_SKIPCHK` bit 15): a camera's rangefinder
+doesn't decide whether the drone can fly. 650 m is as far as
+`DISTANCE_SENSOR`'s centimetres go.
+
+The setting is the simulated hardware, and nothing past it reads it.
+SpiriMav is told which `DISTANCE_SENSOR` is gimbal 1's, as ArduPilot doesn't
+say, but the rangefinder, its spot and its HUD reticle appear only once that
+sensor reports, as on a real Mu.
+
+The ArduPilot release SITL builds drops `rng_N` unless the physics also sends
+Euler attitude, which the ArduPilotPlugin doesn't; `ardupilot-sitl` applies
+the fix from ArduPilot master (`ardupilot-sitl/sitl/patches/`).
 
 The picture never leaves zenoh. `sim-camera-ingress` is SpiriCamera's
 camera-ingress, the app a real Mu runs, plus a `gz://` source
