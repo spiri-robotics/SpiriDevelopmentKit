@@ -7,6 +7,11 @@ name: Build and Publish Images
 # Release tags (vX.Y.Z) publish X.Y.Z, X.Y and latest; main publishes edge.
 # Appsource-Spiri-Simulation pins versions and picks up new ones by itself via
 # Dependabot, so nothing here needs access to that repo.
+#
+# Each image is built for amd64 and arm64, each on a native runner (QEMU is
+# far too slow for Gazebo and ArduPilot), pushed by digest, and the merge job
+# joins the two digests into one multi-arch tag. Pull requests build both
+# without pushing.
 on:
   push:
     branches: [main]
@@ -18,7 +23,80 @@ env:
   IMAGE_PREFIX: spiri-robotics/spiridevelopmentkit
 
 jobs:
-  build-and-push:
+  build:
+    runs-on: ${{ matrix.arch.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in step with merge's.
+        image:
+          - { name: gazebo, context: gazebo/gz }
+          - { name: debug-map, context: debug-map/web }
+          - { name: zenoh-index, context: debug-map/index }
+          - { name: offline-map, context: offline-map/server }
+          - { name: sim-robot, context: sim-robot/robot }
+          - { name: ardupilot-sitl, context: ardupilot-sitl/sitl }
+          - { name: mavlink-router, context: mavlink-router/router }
+          - { name: sim-agent, context: sim-agent/agent }
+          - { name: sim-camera-ingress, context: sim-camera-ingress/ingress }
+        arch:
+          - { name: amd64, platform: linux/amd64, runner: ubuntu-24.04 }
+          - { name: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          platforms: ${{ matrix.arch.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.arch.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ matrix.arch.name }}
+
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          touch "${{ runner.temp }}/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: digests-${{ matrix.image.name }}-${{ matrix.arch.name }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    # Each image whose two builds both succeeded is still published when
+    # another image's fail.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,30 +104,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: gazebo
-            context: gazebo/gz
-          - name: debug-map
-            context: debug-map/web
-          - name: zenoh-index
-            context: debug-map/index
-          - name: offline-map
-            context: offline-map/server
-          - name: sim-robot
-            context: sim-robot/robot
-          - name: ardupilot-sitl
-            context: ardupilot-sitl/sitl
-          - name: mavlink-router
-            context: mavlink-router/router
-          - name: sim-agent
-            context: sim-agent/agent
-          - name: sim-camera-ingress
-            context: sim-camera-ingress/ingress
+        name:
+          - gazebo
+          - debug-map
+          - zenoh-index
+          - offline-map
+          - sim-robot
+          - ardupilot-sitl
+          - mavlink-router
+          - sim-agent
+          - sim-camera-ingress
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.name }}-*
+          merge-multiple: true
+
+      - name: Check both arches built
+        working-directory: ${{ runner.temp }}/digests
+        run: test "$(ls | wc -l)" -eq 2
 
       - name: Log in to registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -69,12 +145,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Create multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.name }}
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:${{ steps.meta.outputs.version }}"
