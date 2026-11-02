@@ -244,4 +244,5 @@ simulator. See [Getting started](getting-started.md) to run it.
 | [SpiriSynq](https://github.com/spiri-robotics/SpiriSynq) | Objects over zenoh. |
 | [SpiriCamera](https://github.com/spiri-robotics/SpiriCamera) | Cameras on SpiriSynq. |
 | [SpiriMav](https://github.com/spiri-robotics/SpiriMav) | The aircraft in the shared world: the robot's position that everything it sees is placed by, and one interface to every robot. |
+| [SpiriCloudLink](https://github.com/spiri-robotics/SpiriCloudLink) | A robot's link to Spiri Cloud: its configuration, its VPN, and its camera for the cloud's Frigate. |
 | [Appsource-Spiri-Simulation](https://github.com/spiri-robotics/Appsource-Spiri-Simulation) | Released versions of the simulation's apps. |

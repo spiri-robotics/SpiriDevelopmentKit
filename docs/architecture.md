@@ -128,11 +128,11 @@ on a Mu: only `zenoh-router-host` is in the robot's network namespace.
 On its first boot a robot installs and starts the apps every Mu runs, listed in
 `ROBOT_APPS` as `<appsource>/<app>`. Released, that's only the zenoh router. In
 development (`compose.dev.yaml`) it's also `sim-agent`, `mavlink-router`,
-`spirimav`, `ardupilot-sitl`, `sim-camera-ingress` and `cloud-link` from the
-mounted checkout, built inside the robot (`ROBOT_DEV`). After that
+`spirimav`, `ardupilot-sitl` and `sim-camera-ingress` from the mounted
+checkout, built inside the robot (`ROBOT_DEV`), and `cloud-link`. After that
 they're ordinary installed apps, brought back by the inner dockerd's restart
-policy. Appsource-Spiri-Mu doesn't exist yet, so the zenoh router comes from
-Appstore-Spiri_development for now.
+policy. Appsource-Spiri-Mu doesn't exist yet, so the zenoh router and
+`cloud-link` come from Appstore-Spiri_development for now.
 
 A sim robot installs from two appsources. The real **Appsource-Spiri-Mu**
 provides everything except its ArduPilot and camera connectors, which the robot
@@ -141,72 +141,18 @@ doesn't start. **Appsource-Spiri-Simulation** provides the sim apps above. See
 
 ## Spiri Cloud
 
-`cloud-link` links a robot to an organization's Spiri Cloud, and keeps the
-configuration the cloud has for it. Nothing about it is simulated. It lives
-here until Appsource-Spiri-Mu exists, and a sim robot is where it's developed.
-The cloud side is the Drones app in cloud_deploy, whose `docs/drones-api.md`
-is the contract.
+`cloud-link` links a robot to an organization's Spiri Cloud: it fetches the
+configuration the cloud has for the robot into `/var/lib/spiri-cloud/cloud.env`,
+joins the organization's NetBird VPN, and serves the robot's camera
+(`<robot>/camera1` by default) as WHEP for the cloud's Frigate. Nothing about
+it is simulated, so it is its own project,
+[SpiriCloudLink](https://github.com/spiri-robotics/SpiriCloudLink), whose
+README describes how it works. A sim robot installs it from
+Appstore-Spiri_development, and on a sim robot `/var/lib/spiri-cloud` is a
+volume of the robot container. Its README covers developing it.
 
-- **Linking** is the RFC 8628 device grant. On the robot's *Spiri Cloud* page
-  the user enters the organization's Drones app address. The page shows a
-  code, a link and a QR code, and someone signed in to the organization
-  approves it from any browser. Nothing calls back to the robot, so this works
-  behind any NAT.
-- **The credential** never expires, and stays in `cloud-link`'s own volume. It
-  is not in the env file, so apps that read the configuration can't use it to
-  unlink the robot or read anyone else's.
-- **The configuration** is an env file the cloud generates, fetched at start
-  and every minute with its ETag, and written to
-  `/var/lib/spiri-cloud/cloud.env` on the host. Apps read it with compose's
-  `env_file` (`required: false`) and treat a missing key as that feature not
-  being set up. Compose reads it when a container is created, so a change
-  reaches an app when it's next brought up. On a sim robot the directory is a
-  volume of the robot container.
-- **Fixed settings.** cloud-link's SpiriConfig settings can fix the cloud
-  address and the robot's name, to provision a robot for one organization.
-  The page then only asks someone there to approve the link. In a dev robot
-  these can't be saved yet, since its appsources are your read-only checkout.
-- **Unlinking** works from either side. A `401` on fetch means the cloud
-  unlinked the robot: the credential and the env file are deleted. Any other
-  failure is temporary, and the last good file stays.
-
-**NetBird.** `cloud-link`'s `netbird` service is the stock NetBird client with a wrapper
-(`cloud-link/netbird/spiri-netbird.sh`) that watches the env file instead of
-reading it through `env_file`, so linking, relinking and unlinking reach the
-VPN within seconds without a restart. Apps that must follow the link live
-should do the same; compose only reads `env_file` when it creates a container,
-and Compose Watch needs a `docker compose watch` process that nothing runs.
-It uses host networking, so the VPN interface (`wt0`) is in the robot's own
-network namespace, as on a real Mu. That works in docker-in-docker: the
-robot is privileged, so inner containers get `/dev/net/tun`, and the host
-kernel's WireGuard is used (`Interface type: Kernel`). Verified against
-preview: the sim robot enrolls, gets a `100.80.x.x` address, and reaches the
-organization's router peer.
-
-**Video.** Frigate pulls WHEP from `/camera/whep`, port 8889, on the robot's
-NetBird address; the contract has one path per camera, and `camera` is the
-main one. cloud-link serves it, with two more services:
-
-- `camera-whep` (`cloud-link/camera_whep.py`, on the SpiriCamera image)
-  mirrors the camera named in cloud-link's *Camera* setting (`./camera1`,
-  i.e. `<robot>/camera1`, by default) and serves it through SpiriCamera's
-  WHEP app, only on the robot's loopback. A mirror publishes nothing of its
-  own, and each JPEG the camera publishes is encoded to H.264 once. It's a
-  zenoh app, so it stays on `spirisynq`: only the external half of the
-  zenoh-router bridge may use host networking, since that bridge is where
-  the robot's zenoh permissions are enforced. `./` needs SpiriCamera on
-  SpiriSynq 0.4.0 or later; until then the setting has to be a full topic.
-- `mediamtx`, MediaMTX on the host network with no zenoh in it. It pulls
-  `camera-whep` while someone is watching and serves it on the robot's own
-  addresses, media on one fixed UDP port (8189). It relays the H.264
-  without decoding it, resolution changes included (tested: 320×240 to
-  1280×720 and back).
-
-So no camera app changes for Spiri Cloud. Video is the one thing that leaves a
-robot outside zenoh, and NetBird's ACLs, not the router, are its gate. With a
-relay in the middle the camera's adaptive bitrate doesn't see the viewer's
-link: the camera's viewer is MediaMTX, on loopback. In the sim,
-`sim-camera-ingress` publishes the gimbal camera at `<robot>/camera1`.
+In the sim, `sim-camera-ingress` publishes the gimbal camera at
+`<robot>/camera1`, which is what `cloud-link` serves.
 
 Each camera has a HUD variant, `hud/<camera>` (`<robot>/hud/camera1`): the
 same picture with the HUD's overlays (SpiriCamera HudWidgets) drawn on it.
@@ -700,8 +646,6 @@ spirimav/             (no source: SpiriMav's image, from its repo), installed in
 sim-agent/            agent/ (spawns the robot's airframe), installed inside a robot
 sim-camera-ingress/   ingress/ (SpiriCamera + gz:// source), installed inside a robot
 sim-robot/            robot/ (docker-in-docker + SpiriConfig image)
-cloud-link/           link/ (Spiri Cloud linking and its page), netbird/ (NetBird client
-                      following the link), installed inside a robot
 compose.yaml          (planned) the whole appliance, for development
 models/               robot SDF templates and meshes (shipped in robot images)
 worlds/               world SDFs per KPI scenario

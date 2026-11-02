@@ -17,7 +17,7 @@ services:
         SpiriDevelopmentKit/spirimav
         SpiriDevelopmentKit/ardupilot-sitl
         SpiriDevelopmentKit/sim-camera-ingress
-        SpiriDevelopmentKit/cloud-link
+        Appstore-Spiri_development/cloud-link
       # Start them with their compose.dev.yaml, which builds the images.
       ROBOT_DEV: "1"
     volumes:
