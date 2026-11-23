@@ -29,12 +29,12 @@ QGroundControl plugin. The SDK provides the swarm for that plugin to fly, the
 worlds and targets, and the KPI scoring.
 
 Longer term the SDK should scale past 3 robots, mix simulated and real robots in
-one swarm, and attach to simulations we don't run ourselves. Choices below are
+one swarm, and attach to simulations a third party runs. Choices below are
 made so that none of that is ruled out, without building it now.
 
 ## The appliance
 
-The SDK ships as a server appliance that Spiri provides. We choose the hardware,
+The SDK ships as a server appliance that Spiri provides. Spiri chooses the hardware,
 the GPU, and the OS. Privileged containers are allowed, and images come
 pre-loaded, which is most of the airgap story.
 
@@ -66,7 +66,7 @@ a plugin and is proxied at `/plugin/mu-1/`. The fleet view comes from the
 existing container-plugin mechanism, not a new feature.
 
 The compose directory must be mounted **at the same path inside and outside**
-the container (e.g. `/srv/sdk:/srv/sdk`). The host daemon resolves bind mounts in
+the container (for example `/srv/sdk:/srv/sdk`). The host daemon resolves bind mounts in
 compose files, so a path that only exists inside the container breaks every
 relative volume.
 
@@ -170,13 +170,13 @@ reticle, drawn on its cameras' axis, stays with the gimbal
 
 ### The world is stock Gazebo
 
-The world container runs **Gazebo Jetty** with the zenoh transport backend
+The world container runs **Gazebo Jetty** with the zenoh transport implementation
 (`GZ_TRANSPORT_IMPLEMENTATION=zenoh`) connected to the shared router, a pinned
-`GZ_PARTITION` (e.g. `sdk`), and the ardupilot_gazebo plugin. **There is no
-Spiri code on the world side.** A world we don't run, with the same four
-ingredients, is one our robots can join.
+`GZ_PARTITION` (for example `sdk`), and the ardupilot_gazebo plugin. **There is no
+Spiri code on the world side.** A world Spiri doesn't run, with the same four
+ingredients, is one Spiri's robots can join.
 
-With the zenoh backend, gz-transport maps (verified in the `gz-transport15`
+With zenoh transport, gz-transport maps (verified in the `gz-transport15`
 source):
 
 - A **service** such as `/world/citadel-hill/create` → a zenoh **queryable** at
@@ -191,14 +191,14 @@ spawn, remove, and observe models. It needs no Gazebo libraries. Keys starting
 with `@` only match exactly, so Gazebo traffic doesn't show up in `**`
 subscriptions and stays separate from SpiriSynq traffic.
 
-Upstream still calls ZeroMQ the recommended production backend, and the zenoh
+Upstream still calls ZeroMQ the recommended production transport, and the zenoh
 code is still settling: `main` has a cold-start fix that Jetty lacks. A failed
 service call gets no reply, only a timeout. Callers retry, and treat a timeout
 as a failure.
 
 ### The ArduPilot bridge stays on UDP
 
-SITL's JSON backend and the `ArduPilotPlugin` exchange packets every physics
+SITL's JSON interface and the `ArduPilotPlugin` exchange packets every physics
 step: servo PWM out, IMU, pose and velocity back. This link is the wire between
 the flight controller and its own airframe, so it:
 
@@ -213,12 +213,12 @@ With `<lock_step>` on, the slowest robot sets the real-time factor for the
 whole world. Rendered cameras make this worse. It's the main performance risk,
 and it gets measured before the scenarios are built on top.
 
-### sim-agent
+### `sim-agent`
 
 `sim-agent` does everything needed to put its robot in a world. It has no
 counterpart on the world side.
 
-1. **Find the world.** Any world: the agent spawns into whichever world's
+1. **Find the world.** Any world: `sim-agent` spawns into whichever world's
    `create` token appears, so it needs no world setting. SITL needs no
    coordination with it either. `ardupilot-sitl` reads its `--home` from the
    world itself (`gazebo-assets` serves the loaded world at `/world.sdf`), so
@@ -235,7 +235,7 @@ counterpart on the world side.
 4. **Spawn.** Call the world's `create/blocking` service over zenoh, with the
    model rendered from a template: name, pose, FDM port (camera stream target
    later). It's idempotent: `remove` its own name first, then `create`. The
-   messages are hand-encoded protobuf, so the agent needs neither Gazebo nor
+   messages are hand-encoded protobuf, so `sim-agent` needs neither Gazebo nor
    protobuf libraries.
 5. **Re-spawn.** Watch Gazebo's liveliness token for `/world/<name>/create`.
    When the world restarts and the token comes back, spawn again.
@@ -390,7 +390,7 @@ asks for a frame only if it moved visibly (0.1 mm), since physics jitters a
 resting robot by microns, and motion is drawn at most 30 times a second:
 Gazebo publishes poses at 60 Hz, and a spinning rotor moves on every one. Gazebo's lights are
 dropped; a fixed overhead light shows the models. Each model has a DOM label
-kept over it, which is also what's clicked to select it. Ground planes are
+kept over it, and selecting that label selects the model. Ground planes are
 outlined on the map instead of drawn. (An earlier version drew gzweb's
 three.js scene in a canvas over the globe; it couldn't depth-test against the map, so it covered whatever was
 drawn above the models. A custom layer doesn't have that problem.)
@@ -419,7 +419,7 @@ would run with full trust in the page.
 `debug-map` image and connects to the router as a client. The bridge, the
 zenoh-ts package and the router are all on 1.10.1, and the bridge and the
 package must match. The session opens when an applet first needs it,
-reconnects by itself, and declares its subscriptions again afterwards. The
+reconnects by itself, and declares its subscriptions again after each reconnect. The
 bridge doesn't restrict anything. Anyone who can load the page can read and
 write every key, so the page is only as private as SpiriConfig's login.
 
@@ -470,7 +470,7 @@ object, are shown in red with the reason. Values over 1 MB aren't checked.
 The *Frames* layer (`web/synq-frames.js`) draws every SpiriSynq `Position` as
 a frame tree: a 3D arrow along each frame's x axis (heading and pitch for a
 body), with a fin on its top for roll, a line to its `relative_to` parent,
-and a label with its topic. Clicking a label opens its heading, pitch and
+and a label with its topic. Select a label to see its heading, pitch and
 roll against local NED, its mount in the parent, and the pose's 90% accuracy,
 also drawn as a cylinder. Positions are found by
 discovery; poses and mounts come live from `**/pose` and `**/mount`, two
@@ -483,8 +483,7 @@ Why the robots and not Gazebo:
 - **Sim and real look the same.** A sim robot's position comes from SITL
   through the same mavlink-router and zenoh path as a real Mu's. The view can't
   tell them apart, and doesn't need to. Nothing about it changes for #97.
-- **Mixed swarms.** Sim and real robots on one network appear on one map. A
-  viewer per backend would need two screens.
+- **Mixed swarms.** Sim and real robots on one network appear on one map. A viewer per simulator would need two screens.
 - **It shows what the operator would see.** Gazebo shows ground truth. The map
   shows each robot's own estimate, so a bad `--home` or a GPS fault is visible
   on the map instead of hidden by the simulator.
@@ -499,7 +498,7 @@ Why the robots and not Gazebo:
 | Sim-only entities | targets and intruders, from Gazebo poses | yes | no |
 
 **Placement.** The Gazebo world's `<spherical_coordinates>` is its anchor on
-the map (`citadel-hill.sdf` is at 44.64750, -63.58028, ENU). Every robot's `--home`
+the map (`citadel-hill.sdf` is at 44.64750, `-63.58028`, ENU). Every robot's `--home`
 must equal it. That is already a requirement for GPS. The world layer is placed
 at that origin, ENU metres scaled into Web Mercator there, so world geometry
 and robot positions line up only if both are right. With terrain on, the world
@@ -540,9 +539,9 @@ they're out.
 | MapLibre GL JS | n/a | BSD-3-Clause | Self-hosted, no token. |
 | Natural Earth II imagery | ~1 km | public domain | A small world-wide raster pyramid: the offline base, once it's built. |
 | Copernicus DEM GLO-30 | 30 m, global | free, commercial use allowed | Needs a source notice and a liability disclaimer. GLO-10 is not public. |
-| NRCan HRDEM | 1–2 m, lidar, most of southern Canada | Open Government Licence – Canada | The right terrain for Canadian test sites. CDEM is its legacy predecessor. |
+| NRCan HRDEM | 1–2 m, lidar, most of southern Canada | Open Government Licence–Canada | The right terrain for Canadian test sites. CDEM is its legacy predecessor. |
 | Sentinel-2 cloudless (EOX) | 10 m | depends on year | 2016 is CC BY 4.0. Some later years were non-commercial. Check the year before shipping. |
-| OpenStreetMap | vector | ODbL | Buildings and roads, extruded to 3D Tiles if we want them. Share-alike applies to derived databases. |
+| OpenStreetMap | vector | ODbL | Buildings and roads, extruded to 3D Tiles when needed. Share-alike applies to derived databases. |
 
 The map's base layer is Natural Earth II. Each scenario site adds a
 high-resolution patch over it: Copernicus or HRDEM terrain, Sentinel-2 imagery,
@@ -565,7 +564,7 @@ tileset ships with its credit string, which the viewer shows.
 Anything that has to cross machines goes through **zenoh routing**.
 
 - The host and SDK SpiriConfig can reach every container. Discovery and the
-  plugin proxy work unchanged. Docker DNS resolves `mu-1`, `world`, and so on.
+  plugin proxy work unchanged. Docker DNS resolves names such as `mu-1` and `world`.
 - A Linux bridge forwards multicast, so zenoh peer scouting should work between
   sim robots on one appliance. Verify this in the spike.
 - Only a few ports are published to the LAN: the SDK SpiriConfig UI, and the
@@ -584,7 +583,7 @@ Anything that has to cross machines goes through **zenoh routing**.
   works as usual. The SDK SpiriConfig can't discover a real robot's UI yet. That
   needs zenoh-based SpiriConfig discovery, and is deferred.
 
-**Rejected: ipvlan and macvlan** (giving each robot its own LAN IP). We tested
+**Rejected: ipvlan and macvlan** (giving each robot its own LAN IP). Spiri tested
 this with real Docker 29.8 ipvlan L2 containers:
 
 - Robots could reach the router, the internet and each other.
@@ -671,7 +670,7 @@ Gazebo, and disappears when you `docker kill` it.** Along the way, answer these:
       over HTTP instead
       (`gazebo/gz/asset_server.py`).
 - [x] A leftover ArduPilot model with no SITL attached doesn't stall lockstep.
-      **It does**, and freezes the whole world; see sim-agent's known gap.
+      **It does**, and freezes the whole world; see the `sim-agent` known gap.
 - [ ] Two robots, then five, in lockstep: real-time factor, and GPS correct with
       a shared `--home`.
 - [x] Zenoh multicast scouting between robots on the docker bridge. Peers

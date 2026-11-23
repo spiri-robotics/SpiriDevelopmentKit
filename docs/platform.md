@@ -7,7 +7,7 @@ it, and how it talks to everything else. Every later page assumes this one.
 
 A Spiri deployment is a set of **robots**: the Spiri Mus in the air, and
 the **ground control station** the operator works from. They run the same
-software. The ground control station is a robot that doesn't fly, and we
+software. The ground control station is a robot that doesn't fly, and Spiri
 think about it differently, but nothing in the platform treats it
 differently.
 
@@ -73,7 +73,7 @@ An app can also describe itself to SpiriConfig:
 
 - **Settings.** An `x-spiri-settings` block in `compose.yaml` turns
   environment variables into a form in SpiriConfig: text, numbers, switches,
-  sliders, a video device picker and so on. See
+  sliders, and a video device picker. See
   [Settings forms](https://github.com/spiri-robotics/SpiriConfig/blob/main/docs/docker.md#settings-forms-x-spiri-settings).
 - **A web page.** `spiriconfig.plugin.*` labels on a service put its web UI in
   SpiriConfig's sidebar, proxied under `/plugin/<name>/`. Any language and
@@ -107,7 +107,7 @@ such as `mu-1/camera1`. An app can say `./camera1` and SpiriSynq fills in the
 robot's name. Objects advertise themselves, so you can find every camera, or
 every object of any class, without knowing in advance where it is.
 
-### Why not plain zenoh?
+### Why not plain zenoh
 
 Zenoh is a transport: keys, pub/sub, queries, routing, and permissions on
 keys. Its payloads are bytes, and every app decides for itself what its keys
@@ -178,7 +178,7 @@ Every robot, the ground control station included, runs these:
 | App | What it gives your code |
 | --- | --- |
 | `zenoh-router` | The robot's zenoh routers, and the `spirisynq` network. |
-| `cloud-link` | The robot's link to a Spiri Cloud organization, and its VPN (NetBird) once linked. The configuration the cloud has for this robot is in `/var/lib/spiri-cloud/cloud.env`. |
+| `cloud-link` | The robot's link to a Spiri Cloud organization, and its VPN (NetBird) once linked. The configuration Spiri Cloud has for this robot is in `/var/lib/spiri-cloud/cloud.env`. |
 
 A Mu adds its hardware:
 
@@ -244,5 +244,5 @@ simulator. See [Getting started](getting-started.md) to run it.
 | [SpiriSynq](https://github.com/spiri-robotics/SpiriSynq) | Objects over zenoh. |
 | [SpiriCamera](https://github.com/spiri-robotics/SpiriCamera) | Cameras on SpiriSynq. |
 | [SpiriMav](https://github.com/spiri-robotics/SpiriMav) | The aircraft in the shared world: the robot's position that everything it sees is placed by, and one interface to every robot. |
-| [SpiriCloudLink](https://github.com/spiri-robotics/SpiriCloudLink) | A robot's link to Spiri Cloud: its configuration, its VPN, and its camera for the cloud's Frigate. |
+| [SpiriCloudLink](https://github.com/spiri-robotics/SpiriCloudLink) | A robot's link to Spiri Cloud: its configuration, its VPN, and its camera for Frigate. |
 | [Appsource-Spiri-Simulation](https://github.com/spiri-robotics/Appsource-Spiri-Simulation) | Released versions of the simulation's apps. |
