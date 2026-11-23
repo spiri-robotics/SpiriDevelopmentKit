@@ -20,7 +20,7 @@ can be called from any copy.
 
 ## SpiriConfig
 
-A robot's operator has to install, configure and update the software on it,
+A robot's operator has to install, configure, and update the software on it,
 often in the field and without a developer to hand.
 [SpiriConfig](https://github.com/spiri-robotics/SpiriConfig) is the robot's
 web UI and command-line tool for that. It installs apps from appsources,
@@ -53,13 +53,13 @@ source-available under the Business Source License, not open source.
 into the shared world. Everything a robot sees is placed in the world through
 the robot itself: a camera is mounted on a gimbal, the gimbal on the robot,
 and the robot on the earth. SpiriMav publishes that last link, the robot's
-own position, and with it its mode, battery, home and gimbals. Without it, a
+own position, and with it its mode, battery, home, and gimbals. Without it, a
 detection has no place on the map and a camera can't mark home in its
 picture.
 
 The rest follows from the aircraft being one more object on the platform.
 Apps work with a robot, not an autopilot, so they don't care whether it runs
-ArduPilot, PX4 or something else. The vehicle becomes a shared resource:
+ArduPilot, PX4, or something else. The vehicle becomes a shared resource:
 many operators and apps can watch it and command it (arm, take off, go
 somewhere, point the gimbal), under the same access control as everything
 else, so seeing a robot and flying it are separate permissions. And every
@@ -71,7 +71,7 @@ SpiriMav.
 
 Many apps want a robot's camera: the operator's video feed, a detector, a
 recorder. Only one of them can open the device, and each would otherwise
-deal with its own drivers, formats and streaming.
+deal with its own drivers, formats, and streaming.
 [SpiriCamera](https://github.com/spiri-robotics/SpiriCamera) opens the
 camera once, whether it's a USB camera, a network stream or a file, and
 publishes it as a camera object every app can share.
