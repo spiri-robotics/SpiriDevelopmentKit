@@ -1,6 +1,6 @@
 # Docs vs reality
 
-The docs in `docs/` describe the platform as we intend it to be. This is the
+The docs in `docs/` describe the platform as Spiri intends it to be. This is the
 list of places where the code doesn't match yet. Fix the code, then delete
 the entry.
 

@@ -25,7 +25,7 @@ style. PMTiles holds MVT and raster tiles MapLibre draws as they are, and the
 server only has to look tiles up. Sizes are about the same: Nova Scotia is
 191 MB of unpacked `.obf` against 141 MB of PMTiles at z14.
 
-Offline routing, if we want it, is a second dataset: a Valhalla or GraphHopper
+Offline routing, where it is wanted, is a second dataset: a Valhalla or GraphHopper
 graph built from the region's `.osm.pbf`.
 
 ## Layers
@@ -41,7 +41,7 @@ the hillshading in the page.
 
 `osm` is published as three objects drawn from the same tiles: `osm` (fills
 and lines), `osm-labels` and `osm-buildings` (its `buildings` layer, extruded
-by `height`/`min_height`). Protomaps' buildings are nearly all at z15 only (a
+by `height`/`min_height`). Protomaps' buildings sit almost entirely at z15 (a
 z14 tile in Halifax had 9 against 1,331 in one z15 child), so `osm` regions
 default to z15. The Protomaps schema isn't the OpenMapTiles one the debug
 map's online 3D buildings use (`source-layer: building`); the
@@ -106,7 +106,7 @@ class MapLayer(SyncableObject):
 (`offline-map/server/map_layer.py`.)
 
 Objects live at `<base topic>/offline-map/<name>`. The fields are a MapLibre
-source spec plus a role, what to draw from it; the page finds them with
+source specification plus a role, what to draw from it; the page finds them with
 `**/sr_metadata/MapLayer`. Objects with the same `tile_key` are one source:
 the page makes one MapLibre source per key, so tiles cross zenoh once, and
 each object adds its own style layers and its own toggle. Fonts and sprites
@@ -144,7 +144,7 @@ MapLibre asks, so this doesn't have the problem of subscribing to big streams.
 
 ## UI
 
-"Offline maps", a SpiriConfig plugin: the `manager` service, the same image
+The "Offline maps" plugin for SpiriConfig: the `manager` service, the same image
 running `manager.py`. It lists what's installed per layer, with sizes and
 sources, and outlines each region on a map drawn from the same files over
 HTTP, so what you see is what's offline. Draw a box (or take the current

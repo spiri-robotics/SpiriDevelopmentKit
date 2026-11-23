@@ -6,7 +6,7 @@ Pick a spot on the debug map and simulate there: Gazebo's ground and buildings
 are generated from the same tiles the map draws, instead of a hand-built world
 per site. Hand-built worlds like `citadel-hill` stay, as extras on top.
 
-## Approach: world tiles
+## Approach: World tiles
 
 Gazebo's world is split the way the map is: web-mercator tiles, at z15 (about
 900 m across at Halifax's latitude). Each tile becomes one static Gazebo model,
@@ -23,13 +23,13 @@ Online, the vector tiles can come from OpenFreeMap (no key). Offline, both read
 the PMTiles already planned for the appliance (see *Map data* in
 [docs/architecture.md](docs/architecture.md)).
 
-## Terrain agent
+## Terrain query service
 
 A zenoh client like `sim-agent`, running in the `gazebo` app so it can write
 meshes where Gazebo loads them.
 
 1. **Pick a place.** The debug map sends a "simulate here" request over zenoh.
-   The agent looks up the DEM height at that point and sets the world's origin
+   The service looks up the DEM height at that point and sets the world's origin
    there, with that height as elevation (Gazebo's `set_spherical_coordinates`
    service; check it behaves on Jetty). Ground at the origin is then z = 0, so
    the robot spawns on the ground at the origin.
@@ -40,11 +40,11 @@ meshes where Gazebo loads them.
 3. **Move.** A new pick clears the tiles, moves the origin and respawns the
    robot. With one robot (mu-1) this is a sim restart in a new place.
    `ardupilot-sitl` reads `--home` from the loaded world, so it has to re-read
-   it after a move, i.e. restart.
+   it after a move, that is: restart.
 
 ## Problems to solve
 
-- **Spawning stalls lockstep.** Loading a collision mesh pauses physics briefly.
+- **Spawning stalls lockstep.** Loading a collision mesh pauses physics for a moment.
   Keep collision meshes coarse and load a ring ahead of the robot.
 - **Flat world.** Gazebo is flat around its origin. The Earth drops away by
   ~8 cm at 1 km and ~2 m at 5 km. Fine within a few km. Moving the origin
@@ -65,4 +65,4 @@ meshes where Gazebo loads them.
 
 A one-off generator for a single z15 tile (DEM + hillshade + buildings → glTF
 model with `model.sdf`), dropped into one of the existing worlds by hand. It
-shows the look, the mesh sizes and the spawn stall before any agent is built.
+shows the look, the mesh sizes and the spawn stall before any terrain service is built.
