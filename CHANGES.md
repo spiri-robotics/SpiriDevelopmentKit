@@ -14,6 +14,11 @@
 - Debug map: a *Camera previews* layer, on by default, shows each gimbal camera's SpiriCamera
   preview (96 px, 1 fps) live in the gimbal's label, with or without *Frames*. A preview is
   dimmed when its frames stop.
+- `mu-mavlink`: a real Mu's MAVLink. mavlink-router on the flight controller's UART, shared over
+  tcp 5760 with SpiriMav, QGroundControl, and the robot's other MAVLink apps, and sent over UDP
+  to a ground station's address if one is set.
+  SpiriMav's gimbal 1 carries `./cameras/1/raw` (a *Gimbal cameras* setting), so the camera's
+  lens and preview reach maps.
 
 ### Fixes
 

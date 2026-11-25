@@ -1,0 +1,110 @@
+# mu-mavlink: a real Mu's MAVLink, for flying hardware. mavlink-router owns the
+# flight controller's UART and shares it with SpiriMav, QGroundControl, and
+# anything else on the robot that speaks MAVLink. It's the sim's mavlink-router
+# and spirimav apps with the UART where ardupilot-sitl's UDP port was. Here
+# until there's an Appsource-Spiri-Mu for it. Install zenoh-router first
+# (SpiriMav joins its `spirisynq` network).
+#
+# Who talks MAVLink, all over mavlink-router's tcp 5760:
+#   - QGroundControl: tcp <robot>:5760, sysid 255, or listening on UDP at
+#     GCS_UDP_ADDRESS:GCS_UDP_PORT, which the router sends to.
+#   - SpiriMav: sysid 254. It gets all traffic (SnifferSysid), so it sees the
+#     ROIs QGroundControl sets.
+#   - Other apps on the robot, such as mavros (not part of this app): tcp
+#     127.0.0.1:5760, e.g. fcu_url:=tcp://127.0.0.1:5760.
+x-spiri-settings:
+  - env: FCU_DEVICE
+    label: Flight controller UART
+    help: >-
+      The serial device the flight controller is wired to. On the Mu's Pi 5
+      it's the debug connector, /dev/ttyAMA10, so the kernel console and its
+      getty must be off it (no console=serial0 in cmdline.txt, and
+      serial-getty@ttyAMA10 masked).
+    default: /dev/ttyAMA10
+  - env: FCU_BAUD
+    widget: number
+    label: UART baud rate
+    help: >-
+      Has to match the flight controller's SERIALn_BAUD for that port. Need
+      not be a standard rate: mavlink-router sets any rate the UART can make.
+    default: "256000"
+  - env: GCS_UDP_ADDRESS
+    label: Ground station address
+    help: >-
+      The router also sends MAVLink over UDP to this address, as for a ground
+      station listening rather than connecting. 127.0.0.1 is no one.
+    default: 127.0.0.1
+  - env: GCS_UDP_PORT
+    widget: number
+    label: Ground station UDP port
+    default: "14551"
+    min: 1
+    max: 65535
+  - env: GIMBAL_CAMERAS
+    label: Gimbal cameras
+    help: >-
+      Which SpiriCamera cameras each gimbal carries, by gimbal device id, as
+      JSON; ./ is this robot's hostname. MAVLink doesn't say, and without it
+      the cameras get no lens from the gimbal and maps can't place their view.
+    default: '{"1": ["./cameras/1/raw"]}'
+  - env: ROBOT_SYSID
+    widget: number
+    label: MAVLink system ID
+    help: The flight controller's SYSID_THISMAV.
+    default: "1"
+    min: 1
+    max: 254
+
+services:
+  router:
+    image: ghcr.io/spiri-robotics/spiridevelopmentkit/mavlink-router:edge
+    restart: unless-stopped
+    network_mode: host
+    devices:
+      - ${FCU_DEVICE:-/dev/ttyAMA10}:${FCU_DEVICE:-/dev/ttyAMA10}
+    configs:
+      # Replaces the image's sim config (UDP 14560 from SITL).
+      - source: mavlink-router
+        target: /etc/mavlink-router/main.conf
+
+  spirimav:
+    image: ghcr.io/spiri-robotics/spirimav:edge
+    restart: unless-stopped
+    networks:
+      - spirisynq
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      # Its topics are under the robot's hostname, as camera-ingress's are.
+      - /etc/hostname:/etc/spirisynq_base_topic:ro
+    environment:
+      SPIRI_MAV_TARGET_SYSID: ${ROBOT_SYSID:-1}
+      SPIRI_MAV_MAVLINK_URL: tcp:host.docker.internal:5760
+      # Has to match the router's SnifferSysid.
+      SPIRI_MAV_SYSID: "254"
+      SPIRI_MAV_GIMBAL_CAMERAS: '${GIMBAL_CAMERAS:-{"1": ["./cameras/1/raw"]}}'
+    depends_on:
+      - router
+
+configs:
+  mavlink-router:
+    content: |
+      [General]
+      TcpServerPort=5760
+      ReportStats=false
+      DebugLogLevel=error
+      SnifferSysid=254
+
+      [UartEndpoint fc]
+      Device=${FCU_DEVICE:-/dev/ttyAMA10}
+      Baud=${FCU_BAUD:-256000}
+
+      [UdpEndpoint gcs]
+      Mode=Normal
+      Address=${GCS_UDP_ADDRESS:-127.0.0.1}
+      Port=${GCS_UDP_PORT:-14551}
+
+networks:
+  spirisynq:
+    name: spirisynq
+    external: true
