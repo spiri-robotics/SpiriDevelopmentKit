@@ -1,8 +1,14 @@
 # Build from source instead of pulling:
 #   docker compose -f compose.yaml -f compose.dev.yaml up --build
+#
+# SPIRICAMERA_IMAGE builds it on another SpiriCamera image than the published
+# edge, one built from a SpiriCamera checkout, say. Inside a sim-robot it has
+# to be in the robot's own docker: `docker save <image> | docker exec -i mu-1
+# docker load`.
 services:
   camera-ingress:
     image: sdk-sim-camera-ingress:dev
-    build: ingress
-  camera-hud:
-    image: sdk-sim-camera-ingress:dev
+    build:
+      context: ingress
+      args:
+        SPIRICAMERA_IMAGE: ${SPIRICAMERA_IMAGE:-ghcr.io/spiri-robotics/spiricamera:edge}

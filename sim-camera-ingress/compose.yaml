@@ -1,53 +1,50 @@
 # sim-camera-ingress: a simulated Mu's camera, installed inside a sim-robot
 # whose Gimbal camera setting is on. It is SpiriCamera's camera-ingress, the
 # same app a real Mu runs, reading the gimbal camera's gz topic over zenoh
-# instead of a device (gz://; see ingress/gz_source.py), and publishing frames
-# on SpiriSynq like any other camera.
+# instead of a device (gz://; see ingress/gz_source.py), and publishing it on
+# SpiriSynq like any other camera.
 #
-# Gazebo only renders the camera while this runs: it subscribes, and an
-# unsubscribed camera sensor isn't drawn. Install zenoh-router first.
+# It publishes three cameras under <robot>/cameras/1: raw, the picture as
+# the sim renders it; hud, raw with the HUD's widgets drawn on it, so raw
+# stays clean for whatever processes it; and preview, a 240-pixel thumbnail
+# at one frame a second. Each runs only while something subscribes to it,
+# and Gazebo only renders the camera while one of them runs: an unsubscribed
+# camera sensor isn't drawn. Install zenoh-router first.
 services:
   camera-ingress:
     image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-camera-ingress:edge
     restart: unless-stopped
     networks:
       - spirisynq
+    # RTSP, as on a real Mu: /raw, /hud and /preview for QGroundControl
+    # (UDP), and /<stream>/relay (TCP) for cloud-link's MediaMTX, which
+    # pulls it from the robot's loopback for Spiri Cloud's Frigate.
+    ports:
+      - "8554:8554/tcp"
+      - "8000-8003:8000-8003/udp"
     environment:
       # The robot's name, from the environment of its SpiriConfig: the model
       # sim-agent spawns is named after it, and its camera's topic is under
-      # it. camera1 is the camera on gimbal 1 (ArduPilot's mount 1), the
-      # default camera everything else looks for: <robot>/camera1.
+      # it. Camera 1 is the camera on gimbal 1 (ArduPilot's mount 1), the
+      # default camera everything else looks for: <robot>/cameras/1/raw.
       SPIRICAMERA_SOURCE: gz://model/${ROBOT_NAME:-mu-1}/gimbal/image
-      SPIRICAMERA_TOPIC: camera1
+      SPIRICAMERA_CAMERA_NAME: "1"
       # It's on gimbal 1, looking along it, so it has a pose and an overlay
       # can draw on places in the world (home, the ROI) where they are in
-      # its picture. Its HUD variant follows it by itself.
+      # its picture. hud and preview follow it by themselves.
       SPIRICAMERA_RELATIVE_TO: ${ROBOT_NAME:-mu-1}/robot_gimbal1
       SPIRI_SYNQ_BASE_TOPIC: ${ROBOT_NAME:-mu-1}
       SPIRICAMERA_QUALITY: ${QUALITY:-80}
       SPIRICAMERA_FRAMERATE: ${FRAMERATE:-10}
-
-  # Each camera has a HUD variant, hud/<camera>: the same picture with the
-  # HUD's overlays drawn on it, so the camera's own frames stay clean for
-  # whatever processes them. It's another SpiriCamera, reading the camera's
-  # frames over SpiriSynq (spirisynq://) rather than the sim, so it is the
-  # same whether the camera is simulated or real. It draws SpiriMav's
-  # widgets, HUD_WIDGETS (ingress/hud.py), each once SpiriMav publishes it:
-  # the rangefinder's only once one reports, so a robot without one has none.
-  camera-hud:
-    image: ghcr.io/spiri-robotics/spiridevelopmentkit/sim-camera-ingress:edge
-    command: hud
-    restart: unless-stopped
-    networks:
-      - spirisynq
-    environment:
-      # SpiriMav's widgets, by topic: the generic ones, under hud/widgets,
-      # any camera's to show (the virtual horizon, heading tape, status,
-      # height and speeds, batteries, and where gimbal 1 points), and gimbal
-      # 1's rangefinder reticle and reading, which is camera1's own, as
-      # gimbal 1 carries it. And markers on home and the ROI, drawn where
-      # they are in the picture, while they're in shot.
-      HUD_WIDGETS: >-
+      # The widgets drawn on hud, SpiriMav's, by topic, each once SpiriMav
+      # publishes it: the generic ones, under hud/widgets, any camera's to
+      # show (the virtual horizon, heading tape, status, height and speeds,
+      # batteries, and where gimbal 1 points), and gimbal 1's rangefinder
+      # reticle and reading, camera 1's own, as gimbal 1 carries it, which
+      # SpiriMav publishes only once a rangefinder reports. And markers on
+      # home and the ROI, drawn where they are in the picture, while they're
+      # in shot.
+      SPIRICAMERA_HUD_WIDGETS: >-
         ${ROBOT_NAME:-mu-1}/hud/widgets/horizon
         ${ROBOT_NAME:-mu-1}/hud/widgets/heading
         ${ROBOT_NAME:-mu-1}/hud/widgets/status
@@ -57,11 +54,6 @@ services:
         ${ROBOT_NAME:-mu-1}/robot_gimbal1_range_hud
         ${ROBOT_NAME:-mu-1}/robot_home_hud
         ${ROBOT_NAME:-mu-1}/robot_roi_hud
-      SPIRICAMERA_SOURCE: spirisynq://${ROBOT_NAME:-mu-1}/camera1
-      SPIRICAMERA_TOPIC: hud/camera1
-      SPIRI_SYNQ_BASE_TOPIC: ${ROBOT_NAME:-mu-1}
-      SPIRICAMERA_QUALITY: ${QUALITY:-80}
-      SPIRICAMERA_FRAMERATE: ${FRAMERATE:-10}
 
 networks:
   spirisynq:
