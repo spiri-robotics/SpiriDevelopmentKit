@@ -1,5 +1,49 @@
-node_modules/
-dist/
-.env
+# Python
 __pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Distribution / packaging
+dist/
+*.whl
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+*.coverage
+
+# Docs build output
 docs/_build/
+
+# `vale sync` downloads style packages into styles/. The vocabulary under
+# styles/config is ours and is committed; everything else is fetched.
+styles/*
+!styles/config/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local tooling
+node_modules/

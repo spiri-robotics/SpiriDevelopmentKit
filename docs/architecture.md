@@ -142,24 +142,24 @@ doesn't start. **Appsource-Spiri-Simulation** provides the sim apps above. See
 ## Spiri Cloud
 
 `cloud-link` links a robot to an organization's Spiri Cloud: it fetches the
-configuration the cloud has for the robot into `/var/lib/spiri-cloud/cloud.env`,
-joins the organization's NetBird VPN, and serves the robot's camera
-(`<robot>/camera1` by default) as WHEP for the cloud's Frigate. Nothing about
+configuration Spiri Cloud has for the robot into `/var/lib/spiri-cloud/cloud.env`,
+joins the organization's NetBird VPN, and serves the robot's camera as WHEP
+for Spiri Cloud's Frigate. Nothing about
 it is simulated, so it is its own project,
 [SpiriCloudLink](https://github.com/spiri-robotics/SpiriCloudLink), whose
 README describes how it works. A sim robot installs it from
 Appstore-Spiri_development, and on a sim robot `/var/lib/spiri-cloud` is a
 volume of the robot container. Its README covers developing it.
 
-In the sim, `sim-camera-ingress` publishes the gimbal camera at
-`<robot>/camera1`, which is what `cloud-link` serves.
-
-Each camera has a HUD variant, `hud/<camera>` (`<robot>/hud/camera1`): the
-same picture with the HUD's overlays (SpiriCamera HudWidgets) drawn on it.
-It is a second SpiriCamera reading the camera's frames over SpiriSynq, so
-the camera's own frames stay clean for anything that processes them, and
-the HUD is drawn the same way whether the camera is simulated or real.
-SpiriMav publishes the overlays, for what the robot reports it has. The
+In the sim, `sim-camera-ingress` publishes the gimbal camera as SpiriCamera
+publishes any camera, three ways under `<robot>/cameras/1`: `raw`, the
+picture as the sim renders it; `hud`, the same picture with the HUD's
+overlays (SpiriCamera HudWidgets) drawn on it; and `preview`, a 240-pixel
+thumbnail at one frame a second. `hud` and `preview` relay `raw`, so the
+camera's own frames stay clean for anything that processes them, and the
+HUD is drawn the same way whether the camera is simulated or real. Each
+runs only while something subscribes to its frames, and Gazebo renders the
+camera only while one does. SpiriMav publishes the overlays, for what the robot reports it has. The
 generic ones, any camera's to show, are under `hud/widgets/`
 (`<robot>/hud/widgets/horizon`): a virtual horizon, heading, status, height
 and speeds, batteries, and each gimbal's pointing. A gimbal's rangefinder
@@ -344,6 +344,16 @@ Johnson is an approximation. Sweeping Gazebo Fuel's "Casual female" and
 the person at 26 m slant, a little past Johnson, but the car only to 31 m,
 about half Johnson's range.
 
+The *Camera previews* layer, on by default, shows each gimbal camera's
+SpiriCamera preview in the gimbal's label: `<base>/preview`, beside the `raw`
+or `hud` the gimbal links, 96 pixels high at one frame a second. It shows
+whether *Frames* is on or not. A preview is about 2.4 KB a frame, cheap
+enough to keep every camera's on the map. Shrinking it further saves little,
+since about 1 KB of each frame (the JPEG tables and EXIF) doesn't shrink with
+the picture. As with the Cameras applet, zenoh-index watches each preview and
+the map asks it for the latest frame. A preview with no new frame for 5 s is
+dimmed, not hidden.
+
 **Known gap: removed models leave tokens behind.** Gazebo doesn't undeclare
 a removed model's sensor and controller tokens, so its topics still look
 published until the world restarts.
@@ -475,8 +485,13 @@ roll against local NED, its mount in the parent, and the pose's 90% accuracy,
 also drawn as a cylinder. Positions are found by
 discovery; poses and mounts come live from `**/pose` and `**/mount`, two
 subscriptions for the whole network that a camera's image never matches.
-Heights are WGS84 and drawn as if above sea level, which is right for SITL
-(no geoid separation) and off by the local separation for a real robot.
+Heights in the pose tree are above the WGS84 ellipsoid; the map draws them
+above sea level, as its terrain and the Gazebo world are, by taking off the
+geoid's height there (EGM96, bundled with the page). SpiriMav puts SITL's
+sea-level heights on the ellipsoid with the same model, so sim and real
+robots come out alike. A detection straight in the root frame with no
+vertical accuracy, such as an ATAK phone's report, has a height nobody vouches
+for: it's drawn on the terrain, and its label says so.
 
 Why the robots and not Gazebo:
 

@@ -117,8 +117,8 @@ Its other settings are its name, its MAVLink system ID, the port
 QGroundControl connects to, *Gimbal camera* and *Gimbal rangefinder*. The
 defaults are fine. *Gimbal camera* is on: a 3-axis gimbal with a camera under
 the airframe, which you point from QGroundControl like any ArduPilot mount and
-watch in the debug map's *Cameras* applet, as `camera1` or, with the HUD drawn
-on it, `hud/camera1`. *Gimbal rangefinder* is off; turn it on for a laser
+watch in the debug map's *Cameras* applet, as `cameras/1/raw` or, with the
+HUD drawn on it, `cameras/1/hud`. *Gimbal rangefinder* is off; turn it on for a laser
 rangefinder along the camera's axis, which ArduPilot reports as rangefinder 1.
 
 Start it, which builds it:

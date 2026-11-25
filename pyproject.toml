@@ -1,0 +1,42 @@
+[project]
+name = "SpiriDevelopmentKit"
+version = "0.1.0"
+description = "Develop for Spiri robots: a simulated Mu, its world, and the tools around it"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{name = "Spiri Robotics"}]
+license = "MIT"
+# The project's own: without starter code, the template has no dependencies to add.
+dependencies = []
+
+# No Python package: this file pins the tools that lint the project and build its
+# docs. uv installs the dependency groups and never tries to build the directory.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+# N999: the package is named like the repo (SpiriGateway, SpiriCamera).
+# B008: typer's idiom. SIM117: nested `with` blocks are how NiceGUI lays out a page.
+ignore = ["N999", "B008", "SIM117"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.3",
+]
+docs = [
+    "furo>=2025.12.19",
+    "myst-parser>=5.1.0",
+    "sphinx>=9.2.0",
+    # Document control, PDF footer and naming, safety panels: the same extension
+    # every Spiri manual uses. https://github.com/spiri-robotics/spiri-docs-tooling
+    "spiri-docs>=0.2.0",
+]
