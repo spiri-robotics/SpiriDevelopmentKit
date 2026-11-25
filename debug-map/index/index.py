@@ -22,9 +22,10 @@ what they look at, not on how much is published.
                              in its own encoding, with the key's count as the
                              attachment. No reply if it has none. A Gazebo
                              topic's value is decoded to JSON.
-    @sdk/index/watch         payload: a Gazebo topic's key. Receive its
-                             messages for the next WATCH_FOR seconds; ask
-                             again to keep them coming.
+    @sdk/index/watch         payload: a Gazebo topic's key, or a SpiriSynq
+                             object's frame key (`<camera>/transport_jpeg/@data`).
+                             Receive its messages for the next WATCH_FOR
+                             seconds; ask again to keep them coming.
     @sdk/index/reset         forget every key (but live Gazebo topics) and
                              start a new epoch; keys return as they're next
                              published. Clears out keys whose publisher went
@@ -34,7 +35,9 @@ Gazebo's topics are keys too, `@/<partition>@/<topic>`, listed from their
 publishers' liveliness tokens with their message type as the encoding.
 They only count messages while watched; see gz.py for why.
 
-`@` keys are only matched exactly, so these never show up in `**`.
+`@` keys are only matched exactly, so these never show up in `**`. A camera's
+frames are on one, and a camera only runs while something subscribes to it, so
+they're only received, and the camera only runs, while a viewer watches them.
 """
 
 import json
@@ -57,6 +60,8 @@ FORGET_AFTER = 300  # seconds a deleted key is remembered
 DISCOVER_EVERY = 5  # seconds between SpiriSynq discoveries
 CHECK_MAX = 1 << 20  # bytes; bigger values aren't checked against schemas
 WATCH_FOR = 10  # seconds a Gazebo topic is received after it was last asked for
+# A SpiriCamera transport's frames: `<camera>/transport_<name>/@data`.
+FRAMES = re.compile(r"^[^@*$?#]+/transport_[a-z]+/@data$")
 TEXT = re.compile(r"^(application/(yaml|json|json5|xml)|text/|zenoh/string)")
 
 
@@ -82,10 +87,10 @@ class Index:
         # for its schema (None or False if it has no usable one).
         self.owners: dict[str, tuple] = {}
         self.checkers: dict[str, Checker | None | bool] = {}
-        # Gazebo topics by key: the liveliness tokens of their publishers, and
-        # while watched, (lease expiry, subscriber, our subscriber token).
+        # Gazebo topics by key: the liveliness tokens of their publishers.
         self.gz_publishers: dict[str, set[str]] = {}
-        self.gz_watches: dict[str, tuple] = {}
+        # Watched keys: (lease expiry, subscriber, our gz subscriber token or None).
+        self.watches: dict[str, tuple] = {}
 
     def on_sample(self, sample: zenoh.Sample):
         key = str(sample.key_expr)
@@ -126,6 +131,8 @@ class Index:
     def _check(self, key: str, k: Key) -> str | None:
         topic, field = self._owner(key)
         checker = topic and self.checkers[topic]
+        if field and any(chunk.startswith("@") for chunk in field):
+            return None  # frames, not a field: no schema covers them
         if not checker or k.size > CHECK_MAX:
             return None
         try:
@@ -174,33 +181,42 @@ class Index:
                 k.deleted = 0
                 k.rev = self.rev
 
-    # Receive a Gazebo topic for the next WATCH_FOR seconds, by subscribing
-    # to it the way a gz node does.
+    # Receive a key for the next WATCH_FOR seconds: a Gazebo topic, by
+    # subscribing to it the way a gz node does, or a SpiriSynq frame key, which
+    # is what makes its camera run.
     def watch(self, session: zenoh.Session, key: str) -> bool:
         with self.lock:
-            k = self.keys.get(key)
-            if not k or not k.gz or k.deleted:
-                return False
-            watch = self.gz_watches.get(key)
+            watch = self.watches.get(key)
             if watch:
-                self.gz_watches[key] = (time.monotonic() + WATCH_FOR, *watch[1:])
+                self.watches[key] = (time.monotonic() + WATCH_FOR, *watch[1:])
                 return True
-            msg_type = k.gz
-        partition, topic = key[2:].split("@", 1)
+            k = self.keys.get(key)
+            msg_type = k.gz if k and not k.deleted else None
+        if not msg_type and not FRAMES.search(key):
+            return False
         subscriber = session.declare_subscriber(key, self.on_sample)
-        token = session.liveliness().declare_token(gz.subscriber_token(partition, topic, msg_type))
+        token = None
+        if msg_type:
+            partition, topic = key[2:].split("@", 1)
+            token = session.liveliness().declare_token(gz.subscriber_token(partition, topic, msg_type))
         with self.lock:
-            self.gz_watches[key] = (time.monotonic() + WATCH_FOR, subscriber, token)
+            if key in self.watches:  # another request got there first
+                subscriber.undeclare()
+                if token:
+                    token.undeclare()
+                return True
+            self.watches[key] = (time.monotonic() + WATCH_FOR, subscriber, token)
         print(f"zenoh-index: watching {key}", flush=True)
         return True
 
     def unwatch_expired(self):
         now = time.monotonic()
         with self.lock:
-            expired = [key for key, (until, *_) in self.gz_watches.items() if until < now]
-            handles = [self.gz_watches.pop(key) for key in expired]
+            expired = [key for key, (until, *_) in self.watches.items() if until < now]
+            handles = [self.watches.pop(key) for key in expired]
         for _, subscriber, token in handles:
-            token.undeclare()
+            if token:
+                token.undeclare()
             subscriber.undeclare()
         for key in expired:
             print(f"zenoh-index: stopped watching {key}", flush=True)
@@ -335,7 +351,7 @@ def main():
         if index.watch(session, key):
             query.reply(query.key_expr, b"")
         else:
-            query.reply_err(f"{key} is not a Gazebo topic")
+            query.reply_err(f"{key} is neither a Gazebo topic nor a camera's frames")
 
     def on_reset(query: zenoh.Query):
         index.reset()

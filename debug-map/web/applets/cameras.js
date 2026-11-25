@@ -6,13 +6,15 @@ import "./cameras.css";
 // Every SpiriCamera on SpiriSynq, real or simulated, and what it sees.
 //
 // Cameras are found by SpiriSynq discovery (`**/sr_metadata`): any object
-// whose classes include Camera. Opening one adds a tile showing its `image`
-// field, a JPEG. Frames are fetched from zenoh-index, not subscribed to: a
-// camera publishes at its own rate and size, and one full-rate stream is
-// enough to starve the page's websocket (docs/architecture.md). Each tile
-// asks for the next frame only once the last one is drawn, at most at the
-// rate picked on it, so a slow link shows fewer frames instead of falling
-// behind.
+// whose classes include Camera. Opening one adds a tile showing its JPEG
+// frames, on `transport_jpeg/@data`. Frames are fetched from zenoh-index, not
+// subscribed to: a camera publishes at its own rate and size, and one
+// full-rate stream is enough to starve the page's websocket
+// (docs/architecture.md). A camera only runs while something subscribes to
+// its frames, so an open tile keeps asking zenoh-index to watch them, and the
+// camera goes idle again once every tile on it is closed. Each tile asks for
+// the next frame only once the last one is drawn, at most at the rate picked
+// on it, so a slow link shows fewer frames instead of falling behind.
 //
 // Under each tile are the camera's overlays (camera-overlays.js). A camera
 // that draws them itself burns them into the frame; one that leaves them to
@@ -22,6 +24,7 @@ import "./cameras.css";
 // switched between drawing them itself and leaving them to its viewers.
 
 const DISCOVER_MS = 5000;
+const WATCH_MS = 4000; // well inside zenoh-index's WATCH_FOR, 10 s
 const STALE_MS = 3000; // a tile with no new frame for this long says so
 const RATES = [1, 5, 10, 30];
 const isCamera = (classes) => classes.some((c) => /^!(Camera|CameraBase)$/.test(c));
@@ -149,6 +152,8 @@ class Tile {
     this.rate = rate;
     this.screen = screen;
     this.stopped = false;
+    this.frames_key = `${topic}/transport_jpeg/@data`;
+    this.watched = 0; // when zenoh-index was last asked to watch the frames
     this.count = null; // the index's message count for the frame shown
     this.url = null;
     this.lastNew = 0;
@@ -348,8 +353,18 @@ class Tile {
     }
   }
 
+  // Keep zenoh-index subscribed to the frames, which is what runs the camera.
+  async watch() {
+    const now = performance.now();
+    if (now - this.watched < WATCH_MS) return;
+    this.watched = now;
+    const [reply] = await this.zenoh.query("@sdk/index/watch", { payload: this.frames_key });
+    if (reply instanceof Error) throw reply;
+  }
+
   async fetch() {
-    const [reply] = await this.zenoh.query("@sdk/index/value", { payload: `${this.topic}/image` });
+    await this.watch();
+    const [reply] = await this.zenoh.query("@sdk/index/value", { payload: this.frames_key });
     if (this.stopped) return;
     const now = performance.now();
     if (!reply || reply instanceof Error) {

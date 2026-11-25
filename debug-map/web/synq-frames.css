@@ -15,6 +15,21 @@
 .sf-body .cls, .sf-body .k { color: var(--muted); }
 .sf-body .acc { color: #ffb86c; }
 
-/* A rangefinder spot's label, its distance, red as its beam. */
-.sf-label.sf-spot { border-color: #ff5555; }
-.sf-spot .sf-head b { color: #fff; }
+/* A carrier's cameras' previews, under its topic: at their own size (SpiriCamera's
+   are 96 px high), never taller; dimmed once no new frame comes. */
+.sf-previews:empty { display: none; }
+.sf-previews { display: flex; flex-wrap: wrap; gap: 3px; margin: 3px 0 1px; }
+.sf-previews img { display: block; max-height: 96px; border-radius: 2px; }
+.sf-previews img[hidden] { display: none; }
+.sf-previews img.stale { opacity: 0.4; filter: grayscale(1); }
+
+/* A detection's label, one value, red as its point; darker once stale. */
+.sf-label.sf-det { border-color: #ff2d55; }
+.sf-det .sf-head b { color: #fff; }
+/* Its CoT type's 2525 symbol, before the text. */
+.sf-det .sf-head { display: flex; align-items: center; gap: 5px; }
+.sf-det .sf-icon { order: -1; display: flex; }
+.sf-det .sf-icon:empty { display: none; }
+.sf-det.stale .sf-icon { opacity: 0.45; filter: grayscale(1); }
+.sf-label.sf-det.stale { border-color: #8c3a4c; }
+.sf-det.stale .sf-head b { color: #c98a97; }

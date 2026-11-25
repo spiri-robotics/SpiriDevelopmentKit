@@ -401,16 +401,38 @@ map.on("load", () => {
     info: "Each gimbal camera's view, from its lens, in bands out to set ranges: by default where it recognises a person, then a car (Johnson: 8 px across 0.75 m, 2.3 m). Hidden behind terrain, buildings and Gazebo's models. ▸ to edit the bands",
     details: (el) => bandEditor(el, frames),
   });
-  layers.add("synq-ranges", "Rangefinders", {
+  layers.add("synq-previews", "Camera previews", {
     get show() {
-      return frames.showRanges;
+      return frames.showPreviews;
     },
     set show(on) {
-      frames.showRanges = on;
+      frames.showPreviews = on;
     },
   }, {
     section: "SpiriSynq",
-    info: "Each gimbal rangefinder's reading, along where the gimbal points: a ray to what it hit, with the distance and its configured accuracy, in a cone of the gimbal's configured pointing accuracy; a faint ray to its range when nothing came back",
+    info: "Each placed gimbal's cameras' SpiriCamera previews (96 px, 1 fps, about 2.4 KB a frame), in its label, with or without Frames; dimmed when no new frame comes",
+  });
+  layers.add("synq-detections", "Detections", {
+    get show() {
+      return frames.showDetections;
+    },
+    set show(on) {
+      frames.showDetections = on;
+    },
+  }, {
+    section: "SpiriSynq",
+    info: "Every located detection (SpiriDetect): a diamond where it is, labelled with its range or what it is, grey once stale; click a label for its fields and 90% accuracy. A bearing without a range has no place, so isn't here",
+  });
+  layers.add("synq-findings", "Detection geometry", {
+    get show() {
+      return frames.showFindings;
+    },
+    set show(on) {
+      frames.showFindings = on;
+    },
+  }, {
+    section: "SpiriSynq",
+    info: "How each detection was found: its chain up the pose tree, its bearing from the sensor in a cone of its bearing accuracy, rings at the ends of its ± range, a camera box's footprint. A bearing without a range is a faint ray out to the sensor's max, or 1 km. Hidden behind terrain, buildings and Gazebo's models",
   });
   // Gazebo, as two layers: the world's 3D models and ground outlines, and
   // its entities' labels, drop lines and heights.
