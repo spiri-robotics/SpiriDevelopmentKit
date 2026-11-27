@@ -29,7 +29,7 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { parse } from "yaml";
-import { cotSymbol } from "./cot-symbol.js";
+import { takColour, takIcon } from "./cot-symbol.js";
 import "./synq-frames.css";
 
 // Every SpiriSynq Position on zenoh, as a tree of frames on the map: a MapLibre
@@ -268,7 +268,7 @@ const DET_FIELDS = [
   "cot_type", "label", "confidence", "time", "stale_after", "course", "speed",
   "azimuth", "elevation", "range", "range_accuracy", "bearing_accuracy", "ray",
   "angular_width", "angular_height", "box",
-  "status", "min", "max", "how",
+  "status", "min", "max", "how", "team", "colour",
 ];
 
 // A detection's topic's parts: <host>/detections/<producer>/<id>, or
@@ -1300,11 +1300,16 @@ export class SynqFrames {
         const text = detText(f);
         const head = label.firstChild.firstChild;
         if (head.textContent !== text) head.textContent = text;
-        // Its CoT type's 2525 symbol, before the text, if it has one.
+        // What ATAK draws for it, before the text, and its callsign in ATAK's
+        // colour (cot-symbol.js).
         const icon = label.firstChild.querySelector(".sf-icon");
-        if (icon.dataset.type !== (f.det.cot_type ?? "")) {
-          icon.dataset.type = f.det.cot_type ?? "";
-          icon.innerHTML = cotSymbol(f.det.cot_type) ?? "";
+        const look = `${f.det.cot_type ?? ""}|${f.det.team ?? ""}|${f.det.colour ?? ""}`;
+        if (icon.dataset.look !== look) {
+          icon.dataset.look = look;
+          icon.innerHTML = takIcon(f.det) ?? "";
+          const colour = takColour(f.det);
+          if (colour) head.style.setProperty("--det-colour", colour);
+          else head.style.removeProperty("--det-colour");
         }
         label.classList.toggle("stale", !!f.stale);
       }

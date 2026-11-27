@@ -6,8 +6,11 @@
 
 - Project generated from SpiriProjectTemplates.
 - Debug map: SpiriDetect detections, in two layers. *Detections* is the points: a diamond at each
-  located detection, labelled with its range or what it is and its CoT type's MIL-STD-2525 symbol
-  (milsymbol), grey once stale. *Detection geometry* is how each was found: its chain up the pose
+  located detection, labelled with its range or what it is and the icon ATAK would draw for it,
+  grey once stale: an ATAK user (one with a team) is a circle in the team's colour, another unit
+  its CoT type's MIL-STD-2525 symbol (milsymbol), a spot marker a dot in its own colour, and
+  anything else with a CoT type a small white diamond. The callsign is in the team's colour, else
+  the affiliation's, as ATAK writes it. *Detection geometry* is how each was found: its chain up the pose
   tree, its bearing in a cone of its bearing accuracy, rings at the ends of its ± range, a camera
   box's footprint, and a faint ray for a bearing without a range. Detections are no longer drawn
   as frames, and the *Rangefinders* layer is gone: SpiriMav's rangefinder is now a detection.

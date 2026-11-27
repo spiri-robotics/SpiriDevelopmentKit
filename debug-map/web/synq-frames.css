@@ -25,8 +25,9 @@
 
 /* A detection's label, one value, red as its point; darker once stale. */
 .sf-label.sf-det { border-color: #ff2d55; }
-.sf-det .sf-head b { color: #fff; }
-/* Its CoT type's 2525 symbol, before the text. */
+.sf-det .sf-head b { color: var(--det-colour, #fff); }
+/* What ATAK draws for it, before the text (cot-symbol.js), and its callsign in
+   ATAK's colour: its team's or affiliation's. */
 .sf-det .sf-head { display: flex; align-items: center; gap: 5px; }
 .sf-det .sf-icon { order: -1; display: flex; }
 .sf-det .sf-icon:empty { display: none; }
