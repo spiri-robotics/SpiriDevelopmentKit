@@ -21,7 +21,8 @@
   tcp 5760 with SpiriMav, QGroundControl, and the robot's other MAVLink apps, and sent over UDP
   to a ground station's address if one is set.
   SpiriMav's gimbal 1 carries `./cameras/1/raw` (a *Gimbal cameras* setting), so the camera's
-  lens and preview reach maps.
+  lens and preview reach maps. It runs SpiriMav 0.2.0, pinned, as it flies hardware: the gimbal
+  rangefinder reaches it, and wildcard queries can't arm.
 
 ### Fixes
 

@@ -68,7 +68,7 @@ services:
         target: /etc/mavlink-router/main.conf
 
   spirimav:
-    image: ghcr.io/spiri-robotics/spirimav:edge
+    image: ghcr.io/spiri-robotics/spirimav:0.2.0
     restart: unless-stopped
     networks:
       - spirisynq
